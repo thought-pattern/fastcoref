@@ -2,8 +2,8 @@ from setuptools import setup, find_packages
 
 import sys
 
-if sys.version_info < (3,7):
-    sys.exit('Python < 3.7 is not supported')
+if sys.version_info < (3,10):
+    sys.exit('Python < 3.10 is not supported')
 
 # read the contents of your README file
 from pathlib import Path
@@ -14,7 +14,7 @@ setup(
     name='fastcoref',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    version='2.1.6',
+    version='3.0.0',
     license='MIT',
     author="Shon Otmazgin, Arie Cattan, Yoav Goldberg",
     author_email='shon711@gmail.com',
@@ -26,11 +26,8 @@ setup(
         'scipy>=1.7.3',
         'spacy>=3.0.6',
         'torch>=1.10.0',
-        'transformers>=4.11.3',
+        'transformers>=5.0.0',
         'datasets>=2.5.2',
     ],
-    extras_require={
-        'train': ['wandb>=0.13.4'],
-    },
 
 )

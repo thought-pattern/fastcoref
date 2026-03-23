@@ -55,6 +55,36 @@ class CorefResult:
 
         return self.coref_logit[span_i_idx, span_j_idx]
 
+    def get_resolved_text(self):
+        """Replace coreferent mentions with their canonical antecedent (longest mention in each cluster)."""
+        char_clusters = self.get_clusters(as_strings=False)
+        str_clusters = self.get_clusters(as_strings=True)
+
+        if not char_clusters:
+            return self.text
+
+        # Build replacement list: for each cluster, the longest mention is the antecedent
+        replacements = []
+        for char_cluster, str_cluster in zip(char_clusters, str_clusters):
+            if len(char_cluster) < 2:
+                continue
+            # Pick longest mention as canonical
+            canonical_idx = max(range(len(str_cluster)), key=lambda i: len(str_cluster[i]))
+            canonical = str_cluster[canonical_idx]
+            for i, (start, end) in enumerate(char_cluster):
+                if i != canonical_idx:
+                    replacements.append((start, end, canonical))
+
+        if not replacements:
+            return self.text
+
+        # Sort by position descending so replacements don't shift indices
+        replacements.sort(key=lambda r: r[0], reverse=True)
+        resolved = self.text
+        for start, end, replacement in replacements:
+            resolved = resolved[:start] + replacement + resolved[end:]
+        return resolved
+
     def __str__(self):
         if len(self.text) > 50:
             text_to_print = f'{self.text[:50]}...'
@@ -108,14 +138,11 @@ class CorefModel(ABC):
                 download(nlp)
                 self.nlp = spacy.load(nlp, exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"])
 
-        self.model, loading_info = coref_class.from_pretrained(
+        self.model = coref_class.from_pretrained(
             self.model_name_or_path, config=config,
-            output_loading_info=True
         )
         self.model.to(self.device)
 
-        for key, val in loading_info.items():
-            logger.info(f'{key}: {list(set(val) - set(["longformer.embeddings.position_ids"]))}')
         t_params, h_params = [p / 1000000 for p in self.model.num_parameters()]
         logger.info(f'Model Parameters: {t_params + h_params:.1f}M, '
                     f'Transformer: {t_params:.1f}M, Coref head: {h_params:.1f}M')

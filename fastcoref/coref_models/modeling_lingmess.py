@@ -33,6 +33,9 @@ class FullyConnectedLayer(Module):
 
 
 class LingMessModel(BertPreTrainedModel):
+    _tied_weights_keys = {}
+    all_tied_weights_keys = {}
+
     def __init__(self, config):
         super().__init__(config)
         self.max_span_length = config.coref_head['max_span_length']

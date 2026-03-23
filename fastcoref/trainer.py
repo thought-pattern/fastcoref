@@ -71,7 +71,7 @@ def _load_f_coref_model(args):
     )
 
     model = FCorefModel.from_pretrained(
-        args.model_name_or_path, output_loading_info=False,
+        args.model_name_or_path,
         config=config, cache_dir=args.cache_dir
     )
 
@@ -178,7 +178,7 @@ class CorefTrainer:
                                                     num_training_steps=t_total)
 
         # using mixed precision
-        scaler = torch.cuda.amp.GradScaler()
+        scaler = torch.amp.GradScaler('cuda')
 
         # Train!
         logger.info("***** Running training *****")
@@ -203,7 +203,7 @@ class CorefTrainer:
                 self.model.zero_grad()
                 self.model.train()
 
-                with torch.cuda.amp.autocast():
+                with torch.amp.autocast('cuda'):
                     outputs = self.model(batch, gold_clusters=batch['gold_clusters'], return_all_outputs=False)
 
                 loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
