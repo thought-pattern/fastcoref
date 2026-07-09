@@ -36,10 +36,10 @@ class FCorefModel(BertPreTrainedModel):
 
     def __init__(self, config):
         super().__init__(config)
-        self.max_span_length = config.coref_head['max_span_length']
-        self.top_lambda = config.coref_head['top_lambda']
-        self.ffnn_size = config.coref_head['ffnn_size']
-        self.dropout_prob = config.coref_head['dropout_prob']
+        self.max_span_length = config.coref_head["max_span_length"]
+        self.top_lambda = config.coref_head["top_lambda"]
+        self.ffnn_size = config.coref_head["ffnn_size"]
+        self.dropout_prob = config.coref_head["dropout_prob"]
 
         base_model = AutoModel.from_config(config)
         FCorefModel.base_model_prefix = base_model.base_model_prefix
@@ -65,7 +65,7 @@ class FCorefModel(BertPreTrainedModel):
 
     def num_parameters(self) -> tuple:
         def head_filter(x):
-            return x[1].requires_grad and any(hp in x[0] for hp in ['coref', 'mention', 'antecedent'])
+            return x[1].requires_grad and any(hp in x[0] for hp in ["coref", "mention", "antecedent"])
 
         head_params = filter(head_filter, self.named_parameters())
         head_params = sum(p.numel() for n, p in head_params)
@@ -101,16 +101,19 @@ class FCorefModel(BertPreTrainedModel):
 
         span_mask = self._get_span_mask(batch_size, k, max_k)  # [batch_size, max_k]
         # drop the invalid indices and set them to the last index
-        topk_1d_indices = (topk_1d_indices * span_mask) + (1 - span_mask) * ((seq_length ** 2) - 1)  # We take different k for each example
+        topk_1d_indices = (topk_1d_indices * span_mask) + (1 - span_mask) * (
+            (seq_length**2) - 1
+        )  # We take different k for each example
         # sorting for coref mention order
         sorted_topk_1d_indices, _ = torch.sort(topk_1d_indices, dim=-1)  # [batch_size, max_k]
 
         # gives the row index in 2D matrix
-        topk_mention_start_ids = torch.div(sorted_topk_1d_indices, seq_length, rounding_mode='floor') # [batch_size, max_k]
+        topk_mention_start_ids = torch.div(sorted_topk_1d_indices, seq_length, rounding_mode="floor")  # [batch_size, max_k]
         topk_mention_end_ids = sorted_topk_1d_indices % seq_length  # [batch_size, max_k]
 
-        topk_mention_logits = mention_logits[torch.arange(batch_size).unsqueeze(-1).expand(batch_size, max_k),
-                                             topk_mention_start_ids, topk_mention_end_ids]  # [batch_size, max_k]
+        topk_mention_logits = mention_logits[
+            torch.arange(batch_size).unsqueeze(-1).expand(batch_size, max_k), topk_mention_start_ids, topk_mention_end_ids
+        ]  # [batch_size, max_k]
 
         # this is antecedents scores - rows mentions, cols coref mentions
         topk_mention_logits = topk_mention_logits.unsqueeze(-1) + topk_mention_logits.unsqueeze(-2)  # [batch_size, max_k, max_k]
@@ -132,9 +135,11 @@ class FCorefModel(BertPreTrainedModel):
         :return: [batch_size, max_k, max_k + 1] - [b, i, j] == 1 if i is antecedent of j
         """
         batch_size, max_k = span_starts.size()
-        new_cluster_labels = torch.zeros((batch_size, max_k, max_k + 1), device='cpu')
+        new_cluster_labels = torch.zeros((batch_size, max_k, max_k + 1), device="cpu")
         all_clusters_cpu = all_clusters.cpu().numpy()
-        for b, (starts, ends, gold_clusters) in enumerate(zip(span_starts.cpu().tolist(), span_ends.cpu().tolist(), all_clusters_cpu)):
+        for b, (starts, ends, gold_clusters) in enumerate(
+            zip(span_starts.cpu().tolist(), span_ends.cpu().tolist(), all_clusters_cpu)
+        ):
             gold_clusters = extract_clusters(gold_clusters)
             mention_to_gold_clusters = extract_mentions_to_clusters(gold_clusters)
             gold_mentions = set(mention_to_gold_clusters.keys())
@@ -162,7 +167,7 @@ class FCorefModel(BertPreTrainedModel):
         all_log_sum_exp = torch.logsumexp(coref_logits, dim=-1)  # [batch_size, max_k]
 
         gold_log_probs = gold_log_sum_exp - all_log_sum_exp
-        losses = - gold_log_probs
+        losses = -gold_log_probs
 
         losses = losses * span_mask
         per_example_loss = torch.sum(losses, dim=-1)  # [batch_size]
@@ -187,8 +192,7 @@ class FCorefModel(BertPreTrainedModel):
         end_mention_logits = self.mention_end_classifier(end_mention_reps).squeeze(-1)  # [batch_size, seq_length]
 
         temp = self.mention_s2e_classifier(start_mention_reps)  # [batch_size, seq_length]
-        joint_mention_logits = torch.matmul(temp,
-                                            end_mention_reps.permute([0, 2, 1]))  # [batch_size, seq_length, seq_length]
+        joint_mention_logits = torch.matmul(temp, end_mention_reps.permute([0, 2, 1]))  # [batch_size, seq_length, seq_length]
 
         mention_logits = joint_mention_logits + start_mention_logits.unsqueeze(-1) + end_mention_logits.unsqueeze(-2)
         mention_mask = self._get_mention_mask(mention_logits)  # [batch_size, seq_length, seq_length]
@@ -198,31 +202,29 @@ class FCorefModel(BertPreTrainedModel):
     def _calc_coref_logits(self, top_k_start_coref_reps, top_k_end_coref_reps):
         # s2s
         temp = self.antecedent_s2s_classifier(top_k_start_coref_reps)  # [batch_size, max_k, dim]
-        top_k_s2s_coref_logits = torch.matmul(temp,
-                                              top_k_start_coref_reps.permute([0, 2, 1]))  # [batch_size, max_k, max_k]
+        top_k_s2s_coref_logits = torch.matmul(temp, top_k_start_coref_reps.permute([0, 2, 1]))  # [batch_size, max_k, max_k]
 
         # e2e
         temp = self.antecedent_e2e_classifier(top_k_end_coref_reps)  # [batch_size, max_k, dim]
-        top_k_e2e_coref_logits = torch.matmul(temp,
-                                              top_k_end_coref_reps.permute([0, 2, 1]))  # [batch_size, max_k, max_k]
+        top_k_e2e_coref_logits = torch.matmul(temp, top_k_end_coref_reps.permute([0, 2, 1]))  # [batch_size, max_k, max_k]
 
         # s2e
         temp = self.antecedent_s2e_classifier(top_k_start_coref_reps)  # [batch_size, max_k, dim]
-        top_k_s2e_coref_logits = torch.matmul(temp,
-                                              top_k_end_coref_reps.permute([0, 2, 1]))  # [batch_size, max_k, max_k]
+        top_k_s2e_coref_logits = torch.matmul(temp, top_k_end_coref_reps.permute([0, 2, 1]))  # [batch_size, max_k, max_k]
 
         # e2s
         temp = self.antecedent_e2s_classifier(top_k_end_coref_reps)  # [batch_size, max_k, dim]
-        top_k_e2s_coref_logits = torch.matmul(temp,
-                                              top_k_start_coref_reps.permute([0, 2, 1]))  # [batch_size, max_k, max_k]
+        top_k_e2s_coref_logits = torch.matmul(temp, top_k_start_coref_reps.permute([0, 2, 1]))  # [batch_size, max_k, max_k]
 
         # sum all terms
-        coref_logits = top_k_s2e_coref_logits + top_k_e2s_coref_logits + top_k_s2s_coref_logits + top_k_e2e_coref_logits  # [batch_size, max_k, max_k]
+        coref_logits = (
+            top_k_s2e_coref_logits + top_k_e2s_coref_logits + top_k_s2s_coref_logits + top_k_e2e_coref_logits
+        )  # [batch_size, max_k, max_k]
         return coref_logits
 
     def forward_transformer(self, batch):
-        input_ids = batch['input_ids']
-        attention_mask = batch['attention_mask']
+        input_ids = batch["input_ids"]
+        attention_mask = batch["attention_mask"]
 
         docs, segments, segment_len = input_ids.size()
         input_ids, attention_mask = input_ids.view(-1, segment_len), attention_mask.view(-1, segment_len)
@@ -230,10 +232,10 @@ class FCorefModel(BertPreTrainedModel):
         outputs = self.base_model(input_ids, attention_mask=attention_mask)
         sequence_output = outputs.last_hidden_state
 
-        attention_mask = attention_mask.view((docs, segments * segment_len))        # [docs, seq_len]
+        attention_mask = attention_mask.view((docs, segments * segment_len))  # [docs, seq_len]
         sequence_output = sequence_output.view((docs, segments * segment_len, -1))  # [docs, seq_len, dim]
 
-        leftovers_ids, leftovers_mask = batch['leftovers']['input_ids'], batch['leftovers']['attention_mask']
+        leftovers_ids, leftovers_mask = batch["leftovers"]["input_ids"], batch["leftovers"]["attention_mask"]
         if len(leftovers_ids) > 0:
             res_outputs = self.base_model(leftovers_ids, attention_mask=leftovers_mask)
             res_sequence_output = res_outputs.last_hidden_state
@@ -257,7 +259,9 @@ class FCorefModel(BertPreTrainedModel):
         mention_logits = self._calc_mention_logits(start_mention_reps, end_mention_reps)
 
         # prune mentions
-        mention_start_ids, mention_end_ids, span_mask, topk_mention_logits = self._prune_topk_mentions(mention_logits, attention_mask, topk_1d_indices)
+        mention_start_ids, mention_end_ids, span_mask, topk_mention_logits = self._prune_topk_mentions(
+            mention_logits, attention_mask, topk_1d_indices
+        )
 
         batch_size, _, dim = start_coref_reps.size()
         max_k = mention_start_ids.size(-1)
@@ -272,7 +276,9 @@ class FCorefModel(BertPreTrainedModel):
         final_logits = topk_mention_logits + coref_logits
         final_logits = self._mask_antecedent_logits(final_logits, span_mask)
         # adding zero logits for null span
-        final_logits = torch.cat((final_logits, torch.zeros((batch_size, max_k, 1), device=self.device)), dim=-1)  # [batch_size, max_k, max_k + 1]
+        final_logits = torch.cat(
+            (final_logits, torch.zeros((batch_size, max_k, 1), device=self.device)), dim=-1
+        )  # [batch_size, max_k, max_k + 1]
 
         if return_all_outputs:
             outputs = (mention_start_ids, mention_end_ids, mention_logits, final_logits)
@@ -285,8 +291,6 @@ class FCorefModel(BertPreTrainedModel):
         if gold_clusters is not None:
             labels_after_pruning = self._get_cluster_labels_after_pruning(mention_start_ids, mention_end_ids, gold_clusters)
             loss = self._get_marginal_log_likelihood_loss(final_logits, labels_after_pruning, span_mask)
-            outputs = (loss, ) + outputs
+            outputs = (loss,) + outputs
 
         return outputs
-
-

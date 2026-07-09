@@ -4,8 +4,13 @@ import torch
 import time
 
 from utilities.metrics import CorefEvaluator, MentionEvaluator
-from utilities.util import create_clusters, create_mention_to_antecedent, update_metrics, \
-    output_evaluation_metrics, write_prediction_to_jsonlines
+from utilities.util import (
+    create_clusters,
+    create_mention_to_antecedent,
+    update_metrics,
+    output_evaluation_metrics,
+    write_prediction_to_jsonlines,
+)
 from tqdm.auto import tqdm
 
 logger = logging.getLogger(__name__)
@@ -24,8 +29,7 @@ class Evaluator:
         logger.info(f"***** Running Inference on {self.args.eval_split} split {prefix} *****")
         logger.info(f"  Examples number: {len(self.eval_dataloader.dataset)}")
 
-        metrics_dict = {'loss': 0., 'post_pruning': MentionEvaluator(), 'mentions': MentionEvaluator(),
-                        'coref': CorefEvaluator()}
+        metrics_dict = {"loss": 0.0, "post_pruning": MentionEvaluator(), "mentions": MentionEvaluator(), "coref": CorefEvaluator()}
         doc_to_tokens = {}
         doc_to_subtoken_map = {}
         doc_to_new_word_map = {}
@@ -35,11 +39,11 @@ class Evaluator:
         evaluation = False
         with tqdm(desc="Inference", total=len(self.eval_dataloader.dataset)) as progress_bar:
             for idx, batch in enumerate(self.eval_dataloader):
-                doc_keys = batch['doc_key']
-                tokens = batch['tokens']
-                subtoken_map = batch['subtoken_map']
-                new_token_map = batch['new_token_map']
-                gold_clusters = batch['gold_clusters']
+                doc_keys = batch["doc_key"]
+                tokens = batch["tokens"]
+                subtoken_map = batch["subtoken_map"]
+                new_token_map = batch["new_token_map"]
+                gold_clusters = batch["gold_clusters"]
 
                 start_time = time.time()
                 with torch.no_grad():
@@ -53,7 +57,7 @@ class Evaluator:
                     evaluation = True
                     gold_clusters = gold_clusters.cpu().numpy()
                     loss, span_starts, span_ends, mention_logits, coref_logits = outputs_np
-                    metrics_dict['loss'] += loss.item()
+                    metrics_dict["loss"] += loss.item()
                 else:
                     span_starts, span_ends, mention_logits, coref_logits = outputs_np
 
@@ -73,14 +77,11 @@ class Evaluator:
 
                 progress_bar.update(n=len(doc_keys))
 
-        write_prediction_to_jsonlines(
-            self.args, doc_to_prediction,
-            doc_to_tokens, doc_to_subtoken_map, doc_to_new_word_map
-        )
+        write_prediction_to_jsonlines(self.args, doc_to_prediction, doc_to_tokens, doc_to_subtoken_map, doc_to_new_word_map)
 
         results = {}
         if evaluation:
             results = output_evaluation_metrics(metrics_dict=metrics_dict, prefix=prefix)
-        logger.info(f'Total time: {total_time:.6f} seconds')
+        logger.info(f"Total time: {total_time:.6f} seconds")
 
         return results

@@ -22,12 +22,12 @@ class Evaluator:
         logger.info(f"***** Running Inference on {self.args.eval_split} split {prefix} *****")
         logger.info(f"  Examples number: {len(self.eval_dataloader.dataset)}")
 
-        metrics_dict = {'loss': 0., 'post_pruning': MentionEvaluator()}
+        metrics_dict = {"loss": 0.0, "post_pruning": MentionEvaluator()}
 
         with tqdm(desc="Inference", total=len(self.eval_dataloader.dataset)) as progress_bar:
             for idx, batch in enumerate(self.eval_dataloader):
-                doc_keys = batch['doc_key']
-                gold_clusters = batch['gold_clusters']
+                doc_keys = batch["doc_key"]
+                gold_clusters = batch["gold_clusters"]
 
                 with torch.no_grad():
                     outputs = model(batch, gold_clusters=gold_clusters, return_all_outputs=True)
@@ -36,7 +36,7 @@ class Evaluator:
 
                 gold_clusters = gold_clusters.cpu().numpy()
                 loss, span_starts, span_ends, mention_logits = outputs_np
-                metrics_dict['loss'] += loss.item()
+                metrics_dict["loss"] += loss.item()
 
                 for i, doc_key in enumerate(doc_keys):
                     gold_clusters_i = extract_clusters(gold_clusters[i])
@@ -44,13 +44,13 @@ class Evaluator:
                     gold_mentions = set(mention_to_gold_clusters.keys())
 
                     candidate_mentions = list(zip(span_starts[i], span_ends[i]))
-                    metrics_dict['post_pruning'].update(candidate_mentions, gold_mentions)
+                    metrics_dict["post_pruning"].update(candidate_mentions, gold_mentions)
 
                 progress_bar.update(n=len(doc_keys))
 
-        post_pruning_mention_pr, post_pruning_mentions_r, post_pruning_mention_f1 = metrics_dict['post_pruning'].get_prf()
+        post_pruning_mention_pr, post_pruning_mentions_r, post_pruning_mention_f1 = metrics_dict["post_pruning"].get_prf()
         results = {
-            'eval_loss': metrics_dict['loss'],
+            "eval_loss": metrics_dict["loss"],
             "precision": post_pruning_mention_pr,
             "recall": post_pruning_mentions_r,
             "f1": post_pruning_mention_f1,
