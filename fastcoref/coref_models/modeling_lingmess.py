@@ -1,13 +1,20 @@
 import math
+
 import numpy as np
 import torch
 from torch import nn
-from torch.nn import Module, Linear, LayerNorm, Dropout, init
-from transformers import BertPreTrainedModel, AutoModel
+from torch.nn import Dropout, LayerNorm, Linear, Module, init
+from transformers import AutoModel, BertPreTrainedModel
 from transformers.activations import ACT2FN
 
-from fastcoref.utilities.consts import CATEGORIES, STOPWORDS
-from fastcoref.utilities.util import extract_clusters, extract_mentions_to_clusters, mask_tensor, get_pronoun_id, get_category_id
+from ..utilities.consts import CATEGORIES, STOPWORDS
+from ..utilities.util import (
+    extract_clusters,
+    extract_mentions_to_clusters,
+    get_category_id,
+    get_pronoun_id,
+    mask_tensor,
+)
 
 
 class FullyConnectedLayer(Module):
@@ -38,13 +45,13 @@ class LingMessModel(BertPreTrainedModel):
 
     def __init__(self, config):
         super().__init__(config)
-        self.max_span_length = config.coref_head['max_span_length']
-        self.top_lambda = config.coref_head['top_lambda']
-        self.ffnn_size = config.coref_head['ffnn_size']
-        self.dropout_prob = config.coref_head['dropout_prob']
+        self.max_span_length = config.coref_head["max_span_length"]
+        self.top_lambda = config.coref_head["top_lambda"]
+        self.ffnn_size = config.coref_head["ffnn_size"]
+        self.dropout_prob = config.coref_head["dropout_prob"]
         self.hidden_size = config.hidden_size
 
-        self.num_cats = len(CATEGORIES) + 1                 # +1 for ALL
+        self.num_cats = len(CATEGORIES) + 1  # +1 for ALL
         self.all_cats_size = self.ffnn_size * self.num_cats
 
         # this is how huggingface loading the class model and setting the name of the variable.
@@ -77,11 +84,19 @@ class LingMessModel(BertPreTrainedModel):
         self.init_weights()
 
     def reset_parameters(self) -> None:
-        W = [self.antecedent_s2s_all_weights, self.antecedent_e2e_all_weights,
-             self.antecedent_s2e_all_weights, self.antecedent_e2s_all_weights]
+        W = [
+            self.antecedent_s2s_all_weights,
+            self.antecedent_e2e_all_weights,
+            self.antecedent_s2e_all_weights,
+            self.antecedent_e2s_all_weights,
+        ]
 
-        B = [self.antecedent_s2s_all_biases, self.antecedent_e2e_all_biases,
-             self.antecedent_s2e_all_biases, self.antecedent_e2s_all_biases]
+        B = [
+            self.antecedent_s2s_all_biases,
+            self.antecedent_e2e_all_biases,
+            self.antecedent_s2e_all_biases,
+            self.antecedent_e2s_all_biases,
+        ]
 
         for w, b in zip(W, B):
             init.kaiming_uniform_(w, a=math.sqrt(5))
@@ -91,7 +106,7 @@ class LingMessModel(BertPreTrainedModel):
 
     def num_parameters(self) -> tuple:
         def head_filter(x):
-            return x[1].requires_grad and any(hp in x[0] for hp in ['coref', 'mention', 'antecedent'])
+            return x[1].requires_grad and any(hp in x[0] for hp in ["coref", "mention", "antecedent"])
 
         head_params = filter(head_filter, self.named_parameters())
         head_params = sum(p.numel() for n, p in head_params)
@@ -126,16 +141,19 @@ class LingMessModel(BertPreTrainedModel):
 
         span_mask = self._get_span_mask(batch_size, k, max_k)  # [batch_size, max_k]
         # drop the invalid indices and set them to the last index
-        topk_1d_indices = (topk_1d_indices * span_mask) + (1 - span_mask) * ((seq_length ** 2) - 1)  # We take different k for each example
+        topk_1d_indices = (topk_1d_indices * span_mask) + (1 - span_mask) * (
+            (seq_length**2) - 1
+        )  # We take different k for each example
         # sorting for coref mention order
         sorted_topk_1d_indices, _ = torch.sort(topk_1d_indices, dim=-1)  # [batch_size, max_k]
 
         # gives the row index in 2D matrix
-        topk_mention_start_ids = torch.div(sorted_topk_1d_indices, seq_length, rounding_mode='floor') # [batch_size, max_k]
+        topk_mention_start_ids = torch.div(sorted_topk_1d_indices, seq_length, rounding_mode="floor")  # [batch_size, max_k]
         topk_mention_end_ids = sorted_topk_1d_indices % seq_length  # [batch_size, max_k]
 
-        topk_mention_logits = mention_logits[torch.arange(batch_size).unsqueeze(-1).expand(batch_size, max_k),
-                                             topk_mention_start_ids, topk_mention_end_ids]  # [batch_size, max_k]
+        topk_mention_logits = mention_logits[
+            torch.arange(batch_size).unsqueeze(-1).expand(batch_size, max_k), topk_mention_start_ids, topk_mention_end_ids
+        ]  # [batch_size, max_k]
 
         # this is antecedents scores - rows mentions, cols coref mentions
         topk_mention_logits = topk_mention_logits.unsqueeze(-1) + topk_mention_logits.unsqueeze(-2)  # [batch_size, max_k, max_k]
@@ -188,7 +206,7 @@ class LingMessModel(BertPreTrainedModel):
         for b, (starts, ends) in enumerate(zip(span_starts.cpu().tolist(), span_ends.cpu().tolist())):
             doc_spans = []
             for start, end in zip(starts, ends):
-                token_indices = [new_token_map[b][idx] for idx in set(subtoken_map[b][start:end + 1]) - {None}]
+                token_indices = [new_token_map[b][idx] for idx in set(subtoken_map[b][start : end + 1]) - {None}]
                 span = {tokens[b][idx].lower() for idx in token_indices if idx is not None}
                 pronoun_id = get_pronoun_id(span)
                 doc_spans.append((span - STOPWORDS, pronoun_id))
@@ -206,21 +224,21 @@ class LingMessModel(BertPreTrainedModel):
         return categories_labels, categories_masks
 
     def _get_marginal_log_likelihood_loss(self, logits, labels, span_mask):
-        gold_coref_logits = mask_tensor(logits, labels)                       # [batch_size, num_cats + 1, max_k, max_k]
+        gold_coref_logits = mask_tensor(logits, labels)  # [batch_size, num_cats + 1, max_k, max_k]
 
-        gold_log_sum_exp = torch.logsumexp(gold_coref_logits, dim=-1)         # [batch_size, num_cats + 1, max_k]
-        all_log_sum_exp = torch.logsumexp(logits, dim=-1)                     # [batch_size, num_cats + 1, max_k]
-        losses = all_log_sum_exp - gold_log_sum_exp                           # [batch_size, num_cats + 1, max_k]
+        gold_log_sum_exp = torch.logsumexp(gold_coref_logits, dim=-1)  # [batch_size, num_cats + 1, max_k]
+        all_log_sum_exp = torch.logsumexp(logits, dim=-1)  # [batch_size, num_cats + 1, max_k]
+        losses = all_log_sum_exp - gold_log_sum_exp  # [batch_size, num_cats + 1, max_k]
 
         # zero the loss of padded spans
-        span_mask = span_mask.unsqueeze(1)                                    # [batch_size, 1, max_k]
-        losses = losses * span_mask                                           # [batch_size, num_cats, max_k]
+        span_mask = span_mask.unsqueeze(1)  # [batch_size, 1, max_k]
+        losses = losses * span_mask  # [batch_size, num_cats, max_k]
 
         # normalize loss by spans
-        per_span_loss = losses.mean(dim=-1)                                   # [batch_size, num_cats + 1]
+        per_span_loss = losses.mean(dim=-1)  # [batch_size, num_cats + 1]
 
         # normalize loss by document
-        loss_per_cat = per_span_loss.mean(dim=0)                              # [num_cats + 1]
+        loss_per_cat = per_span_loss.mean(dim=0)  # [num_cats + 1]
 
         # normalize loss by category
         loss = loss_per_cat.sum()
@@ -239,21 +257,20 @@ class LingMessModel(BertPreTrainedModel):
 
     def _calc_mention_logits(self, start_mention_reps, end_mention_reps):
         start_mention_logits = self.mention_start_classifier(start_mention_reps).squeeze(-1)  # [batch_size, seq_length]
-        end_mention_logits = self.mention_end_classifier(end_mention_reps).squeeze(-1)        # [batch_size, seq_length]
+        end_mention_logits = self.mention_end_classifier(end_mention_reps).squeeze(-1)  # [batch_size, seq_length]
 
-        temp = self.mention_s2e_classifier(start_mention_reps)                                # [batch_size, seq_length]
-        joint_mention_logits = torch.matmul(temp,
-                                            end_mention_reps.permute([0, 2, 1]))              # [batch_size, seq_length, seq_length]
+        temp = self.mention_s2e_classifier(start_mention_reps)  # [batch_size, seq_length]
+        joint_mention_logits = torch.matmul(temp, end_mention_reps.permute([0, 2, 1]))  # [batch_size, seq_length, seq_length]
 
         mention_logits = joint_mention_logits + start_mention_logits.unsqueeze(-1) + end_mention_logits.unsqueeze(-2)
-        mention_mask = self._get_mention_mask(mention_logits)                                 # [batch_size, seq_length, seq_length]
-        mention_logits = mask_tensor(mention_logits, mention_mask)                            # [batch_size, seq_length, seq_length]
+        mention_mask = self._get_mention_mask(mention_logits)  # [batch_size, seq_length, seq_length]
+        mention_logits = mask_tensor(mention_logits, mention_mask)  # [batch_size, seq_length, seq_length]
         return mention_logits
 
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (self.num_cats, self.ffnn_size)
         x = x.view(*new_x_shape)
-        return x.permute(0, 2, 1, 3)    # bnkf/bnlg
+        return x.permute(0, 2, 1, 3)  # bnkf/bnlg
 
     def _calc_coref_logits(self, start_reps, end_reps):
         # see discussion on einsum: https://discuss.pytorch.org/t/batch-matrix-multiplication-of-3d-tensors/153644/4
@@ -261,15 +278,19 @@ class LingMessModel(BertPreTrainedModel):
         all_starts = self.transpose_for_scores(self.coref_start_all_mlps(start_reps))
         all_ends = self.transpose_for_scores(self.coref_end_all_mlps(end_reps))
 
-        logits = torch.einsum('bnkf, nfg, bnlg -> bnkl', all_starts, self.antecedent_s2s_all_weights, all_starts) + \
-                 torch.einsum('bnkf, nfg, bnlg -> bnkl', all_ends,   self.antecedent_e2e_all_weights, all_ends) + \
-                 torch.einsum('bnkf, nfg, bnlg -> bnkl', all_starts, self.antecedent_s2e_all_weights, all_ends) + \
-                 torch.einsum('bnkf, nfg, bnlg -> bnkl', all_ends,   self.antecedent_e2s_all_weights, all_starts)
+        logits = (
+            torch.einsum("bnkf, nfg, bnlg -> bnkl", all_starts, self.antecedent_s2s_all_weights, all_starts)
+            + torch.einsum("bnkf, nfg, bnlg -> bnkl", all_ends, self.antecedent_e2e_all_weights, all_ends)
+            + torch.einsum("bnkf, nfg, bnlg -> bnkl", all_starts, self.antecedent_s2e_all_weights, all_ends)
+            + torch.einsum("bnkf, nfg, bnlg -> bnkl", all_ends, self.antecedent_e2s_all_weights, all_starts)
+        )
 
-        biases = torch.einsum('bnkf, nf -> bnk', all_starts, self.antecedent_s2s_all_biases).unsqueeze(-2) + \
-                 torch.einsum('bnkf, nf -> bnk', all_ends,   self.antecedent_e2e_all_biases).unsqueeze(-2) + \
-                 torch.einsum('bnkf, nf -> bnk', all_ends,   self.antecedent_s2e_all_biases).unsqueeze(-2) + \
-                 torch.einsum('bnkf, nf -> bnk', all_starts, self.antecedent_e2s_all_biases).unsqueeze(-2)
+        biases = (
+            torch.einsum("bnkf, nf -> bnk", all_starts, self.antecedent_s2s_all_biases).unsqueeze(-2)
+            + torch.einsum("bnkf, nf -> bnk", all_ends, self.antecedent_e2e_all_biases).unsqueeze(-2)
+            + torch.einsum("bnkf, nf -> bnk", all_ends, self.antecedent_s2e_all_biases).unsqueeze(-2)
+            + torch.einsum("bnkf, nf -> bnk", all_starts, self.antecedent_e2s_all_biases).unsqueeze(-2)
+        )
 
         return logits + biases
 
@@ -277,21 +298,23 @@ class LingMessModel(BertPreTrainedModel):
         batch_size, max_k, _ = clusters_labels.size()
 
         categories_labels = clusters_labels.unsqueeze(1).repeat(1, self.num_cats, 1, 1) * categories_masks
-        all_labels = torch.cat((categories_labels, clusters_labels.unsqueeze(1)), dim=1)            # for the combined loss (L_coref + L_tasks)
+        all_labels = torch.cat(
+            (categories_labels, clusters_labels.unsqueeze(1)), dim=1
+        )  # for the combined loss (L_coref + L_tasks)
 
         # null cluster
         zeros = torch.zeros((batch_size, self.num_cats + 1, max_k, 1), device=self.device)
-        all_labels = torch.cat((all_labels, zeros), dim=-1)                                         # [batch_size, num_cats + 1, max_k, max_k + 1]
+        all_labels = torch.cat((all_labels, zeros), dim=-1)  # [batch_size, num_cats + 1, max_k, max_k + 1]
         no_antecedents = 1 - torch.sum(all_labels, dim=-1).bool().float()
         all_labels[:, :, :, -1] = no_antecedents
 
         return all_labels
 
     def forward_transformer(self, batch):
-        input_ids = batch['input_ids']
-        attention_mask = batch['attention_mask']
+        input_ids = batch["input_ids"]
+        attention_mask = batch["attention_mask"]
 
-        if 'leftovers' not in batch:
+        if "leftovers" not in batch:
             outputs = self.base_model(input_ids, attention_mask=attention_mask)
             sequence_output = outputs.last_hidden_state
         else:
@@ -301,10 +324,10 @@ class LingMessModel(BertPreTrainedModel):
             outputs = self.base_model(input_ids, attention_mask=attention_mask)
             sequence_output = outputs.last_hidden_state
 
-            attention_mask = attention_mask.view((docs, segments * segment_len))        # [docs, seq_len]
+            attention_mask = attention_mask.view((docs, segments * segment_len))  # [docs, seq_len]
             sequence_output = sequence_output.view((docs, segments * segment_len, -1))  # [docs, seq_len, dim]
 
-            leftovers_ids, leftovers_mask = batch['leftovers']['input_ids'], batch['leftovers']['attention_mask']
+            leftovers_ids, leftovers_mask = batch["leftovers"]["input_ids"], batch["leftovers"]["attention_mask"]
             if len(leftovers_ids) > 0:
                 res_outputs = self.base_model(leftovers_ids, attention_mask=leftovers_mask)
                 res_sequence_output = res_outputs.last_hidden_state
@@ -315,7 +338,7 @@ class LingMessModel(BertPreTrainedModel):
         return sequence_output, attention_mask
 
     def forward(self, batch, gold_clusters=None, return_all_outputs=False):
-        tokens, subtoken_map, new_token_map = batch['tokens'], batch['subtoken_map'], batch['new_token_map']
+        tokens, subtoken_map, new_token_map = batch["tokens"], batch["subtoken_map"], batch["new_token_map"]
 
         sequence_output, attention_mask = self.forward_transformer(batch)
 
@@ -327,7 +350,9 @@ class LingMessModel(BertPreTrainedModel):
         mention_logits = self._calc_mention_logits(start_mention_reps, end_mention_reps)
 
         # prune mentions
-        mention_start_ids, mention_end_ids, span_mask, topk_mention_logits, topk_1d_indices = self._prune_topk_mentions(mention_logits, attention_mask)
+        mention_start_ids, mention_end_ids, span_mask, topk_mention_logits, topk_1d_indices = self._prune_topk_mentions(
+            mention_logits, attention_mask
+        )
 
         categories_labels, categories_masks = self._get_categories_labels(
             tokens, subtoken_map, new_token_map, mention_start_ids, mention_end_ids
@@ -351,8 +376,12 @@ class LingMessModel(BertPreTrainedModel):
         categories_logits = self._mask_antecedent_logits(categories_logits, span_mask, categories_masks)
 
         # adding zero logits for null span
-        final_logits = torch.cat((final_logits, torch.zeros((batch_size, max_k, 1), device=self.device)), dim=-1)                           # [batch_size, max_k, max_k + 1]
-        categories_logits = torch.cat((categories_logits, torch.zeros((batch_size, self.num_cats, max_k, 1), device=self.device)), dim=-1)  # [batch_size, num_cats, max_k, max_k + 1]
+        final_logits = torch.cat(
+            (final_logits, torch.zeros((batch_size, max_k, 1), device=self.device)), dim=-1
+        )  # [batch_size, max_k, max_k + 1]
+        categories_logits = torch.cat(
+            (categories_logits, torch.zeros((batch_size, self.num_cats, max_k, 1), device=self.device)), dim=-1
+        )  # [batch_size, num_cats, max_k, max_k + 1]
 
         if return_all_outputs:
             outputs = (mention_start_ids, mention_end_ids, mention_logits, final_logits)
@@ -365,6 +394,13 @@ class LingMessModel(BertPreTrainedModel):
             all_logits = torch.cat((categories_logits, final_logits.unsqueeze(1)), dim=1)
 
             loss = self._get_marginal_log_likelihood_loss(all_logits, all_labels, span_mask)
-            outputs = (loss,) + outputs + (categories_labels, clusters_labels, )
+            outputs = (
+                (loss,)
+                + outputs
+                + (
+                    categories_labels,
+                    clusters_labels,
+                )
+            )
 
         return outputs

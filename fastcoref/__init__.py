@@ -1,2 +1,2 @@
-from .modeling import FCoref, LingMessCoref, CorefResult
-from .trainer import TrainingArgs, CorefTrainer
+from .modeling import CorefResult, FCoref, LingMessCoref
+from .trainer import CorefTrainer, TrainingArgs

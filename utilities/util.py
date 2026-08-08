@@ -15,12 +15,12 @@ nlp = None
 
 
 def output_evaluation_metrics(metrics_dict, prefix):
-    loss = metrics_dict['loss']
-    post_pruning_mention_pr, post_pruning_mentions_r, post_pruning_mention_f1 = metrics_dict['post_pruning'].get_prf()
-    mention_p, mentions_r, mention_f1 = metrics_dict['mentions'].get_prf()
-    p, r, f1 = metrics_dict['coref'].get_prf()
+    loss = metrics_dict["loss"]
+    post_pruning_mention_pr, post_pruning_mentions_r, post_pruning_mention_f1 = metrics_dict["post_pruning"].get_prf()
+    mention_p, mentions_r, mention_f1 = metrics_dict["mentions"].get_prf()
+    p, r, f1 = metrics_dict["coref"].get_prf()
     results = {
-        'eval_loss': loss,
+        "eval_loss": loss,
         "post pruning mention precision": post_pruning_mention_pr,
         "post pruning mention recall": post_pruning_mentions_r,
         "post pruning mention f1": post_pruning_mention_f1,
@@ -29,7 +29,7 @@ def output_evaluation_metrics(metrics_dict, prefix):
         "mention f1": mention_f1,
         "precision": p,
         "recall": r,
-        "f1": f1
+        "f1": f1,
     }
 
     logger.info("***** Eval results {} *****".format(prefix))
@@ -99,7 +99,7 @@ def flatten(l):
 
 
 def read_jsonlines(file):
-    with open(file, 'r') as f:
+    with open(file, "r") as f:
         docs = [json.loads(line.strip()) for line in f]
     return docs
 
@@ -109,15 +109,15 @@ def write_prediction_to_jsonlines(args, doc_to_prediction, doc_to_tokens, doc_to
     if args.output_file is not None:
         output_eval_file = args.output_file
     else:
-        output_eval_file = Path(eval_file).stem + '.output.jsonlines'
+        output_eval_file = Path(eval_file).stem + ".output.jsonlines"
         if args.output_dir is not None:
             output_eval_file = os.path.join(args.output_dir, output_eval_file)
-    logger.info(f'Predicted clusters at: {output_eval_file}')
+    logger.info(f"Predicted clusters at: {output_eval_file}")
 
     docs = read_jsonlines(file=eval_file)
     with open(output_eval_file, "w") as writer:
         for doc in docs:
-            doc_key = doc['doc_key']
+            doc_key = doc["doc_key"]
             assert doc_key in doc_to_prediction
 
             predicted_clusters = doc_to_prediction[doc_key]
@@ -126,8 +126,8 @@ def write_prediction_to_jsonlines(args, doc_to_prediction, doc_to_tokens, doc_to
             new_word_map = doc_to_new_word_map[doc_key]
 
             new_predicted_clusters = align_clusters(predicted_clusters, subtoken_map, new_word_map)
-            doc['tokens'] = tokens
-            doc['clusters'] = new_predicted_clusters
+            doc["tokens"] = tokens
+            doc["clusters"] = new_predicted_clusters
 
             writer.write(json.dumps(doc) + "\n")
 
@@ -136,16 +136,16 @@ def to_dataframe(file_path, api=False):
     global nlp
     df = pd.read_json(file_path, lines=True)
 
-    if 'tokens' in df.columns:
+    if "tokens" in df.columns:
         pass
-    elif 'sentences' in df.columns:
+    elif "sentences" in df.columns:
         # this is just for ontonotes. please avoid using 'sentences' and use 'text' or 'tokens'
-        df['tokens'] = df['sentences'].apply(lambda x: flatten(x))
-    elif 'text' in df.columns:
+        df["tokens"] = df["sentences"].apply(lambda x: flatten(x))
+    elif "text" in df.columns:
         if nlp is None:
             nlp = spacy.load("en_core_web_sm", exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"])
-        texts = df['text'].tolist()
-        logger.info(f'Tokenize text with Spacy...')
+        texts = df["text"].tolist()
+        logger.info("Tokenize text with Spacy...")
 
         docs_tokens = []
         docs_tokens_to_start_char = []
@@ -162,29 +162,29 @@ def to_dataframe(file_path, api=False):
             docs_tokens_to_start_char.append(tokens_to_start_char)
             docs_tokens_to_end_char.append(tokens_to_end_char)
 
-        df['tokens'] = docs_tokens
-        df['tokens_to_start_char'] = docs_tokens_to_start_char
-        df['tokens_to_end_char'] = docs_tokens_to_end_char
+        df["tokens"] = docs_tokens
+        df["tokens_to_start_char"] = docs_tokens_to_start_char
+        df["tokens_to_end_char"] = docs_tokens_to_end_char
     else:
-        raise NotImplementedError(f'The jsonlines must include tokens/text/sentences attribute')
+        raise NotImplementedError("The jsonlines must include tokens/text/sentences attribute")
 
-    if 'speakers' in df.columns:
-        df['speakers'] = df['speakers'].apply(lambda x: flatten(x))
+    if "speakers" in df.columns:
+        df["speakers"] = df["speakers"].apply(lambda x: flatten(x))
     else:
-        df['speakers'] = df['tokens'].apply(lambda x: [None] * len(x))
+        df["speakers"] = df["tokens"].apply(lambda x: [None] * len(x))
 
-    if not api and 'doc_key' not in df.columns:
-        raise NotImplementedError(f'The jsonlines must include doc_key, you can use uuid.uuid4().hex to generate.')
+    if not api and "doc_key" not in df.columns:
+        raise NotImplementedError("The jsonlines must include doc_key, you can use uuid.uuid4().hex to generate.")
 
-    columns = ['tokens', 'speakers']
+    columns = ["tokens", "speakers"]
     if not api:
-        columns.append('doc_key')
-    if 'text' in df.columns:
-        columns.append('text')
-        columns.append('tokens_to_start_char')
-        columns.append('tokens_to_end_char')
-    if 'clusters' in df.columns:
-        columns.append('clusters')
+        columns.append("doc_key")
+    if "text" in df.columns:
+        columns.append("text")
+        columns.append("tokens_to_start_char")
+        columns.append("tokens_to_end_char")
+    if "clusters" in df.columns:
+        columns.append("clusters")
     df = df[columns]
 
     df = df.dropna()
@@ -235,10 +235,9 @@ def update_metrics(metrics, span_starts, span_ends, gold_clusters, predicted_clu
     gold_mentions = list(mention_to_gold_clusters.keys())
     predicted_mentions = list(mention_to_predicted_clusters.keys())
 
-    metrics['post_pruning'].update(candidate_mentions, gold_mentions)
-    metrics['mentions'].update(predicted_mentions, gold_mentions)
-    metrics['coref'].update(predicted_clusters, gold_clusters,
-                            mention_to_predicted_clusters, mention_to_gold_clusters)
+    metrics["post_pruning"].update(candidate_mentions, gold_mentions)
+    metrics["mentions"].update(predicted_mentions, gold_mentions)
+    metrics["coref"].update(predicted_clusters, gold_clusters, mention_to_predicted_clusters, mention_to_gold_clusters)
 
 
 def create_clusters(mention_to_antecedent):
@@ -271,7 +270,7 @@ def create_mention_to_antecedent(span_starts, span_ends, coref_logits):
     batch_size, n_spans, _ = coref_logits.shape
 
     max_antecedents = coref_logits.argmax(axis=-1)
-    doc_indices, mention_indices = np.nonzero(max_antecedents < n_spans)        # indices where antecedent is not null.
+    doc_indices, mention_indices = np.nonzero(max_antecedents < n_spans)  # indices where antecedent is not null.
     antecedent_indices = max_antecedents[max_antecedents < n_spans]
     span_indices = np.stack([span_starts, span_ends], axis=-1)
 
@@ -283,8 +282,7 @@ def create_mention_to_antecedent(span_starts, span_ends, coref_logits):
 
 
 def pad_clusters_inside(clusters, max_cluster_size):
-    return [cluster + [(NULL_ID_FOR_COREF, NULL_ID_FOR_COREF)] * (max_cluster_size - len(cluster)) for cluster
-            in clusters]
+    return [cluster + [(NULL_ID_FOR_COREF, NULL_ID_FOR_COREF)] * (max_cluster_size - len(cluster)) for cluster in clusters]
 
 
 def pad_clusters_outside(clusters, max_num_clusters):
@@ -302,6 +300,7 @@ def mask_tensor(t, mask):
     t = torch.clamp(t, min=-10000.0, max=10000.0)
     return t
 
+
 def get_pronoun_id(span):
     if len(span) == 1:
         span = list(span)
@@ -316,31 +315,31 @@ def get_category_id(mention, antecedent):
 
     if mention_pronoun_id > -1 and antecedent_pronoun_id > -1:
         if mention_pronoun_id == antecedent_pronoun_id:
-            return CATEGORIES['pron-pron-comp']
+            return CATEGORIES["pron-pron-comp"]
         else:
-            return CATEGORIES['pron-pron-no-comp']
+            return CATEGORIES["pron-pron-no-comp"]
 
     if mention_pronoun_id > -1 or antecedent_pronoun_id > -1:
-        return CATEGORIES['pron-ent']
+        return CATEGORIES["pron-ent"]
 
     if mention == antecedent:
-        return CATEGORIES['match']
+        return CATEGORIES["match"]
 
     union = mention.union(antecedent)
     if len(union) == max(len(mention), len(antecedent)):
-        return CATEGORIES['contain']
+        return CATEGORIES["contain"]
 
-    return CATEGORIES['other']
+    return CATEGORIES["other"]
 
 
 def softXEnt(teacher_logits, student_logits, span_mask, T=1):
     teacher_probs = torch.softmax(teacher_logits / T, dim=-1)
     student_log_probs = torch.log_softmax(student_logits / T, dim=-1)
 
-    losses = (-teacher_probs * student_log_probs).sum(dim=-1)                # [batch_size, seq_len]
+    losses = (-teacher_probs * student_log_probs).sum(dim=-1)  # [batch_size, seq_len]
 
     losses = losses * span_mask
-    per_example_loss = torch.sum(losses, dim=-1)                            # [batch_size]
+    per_example_loss = torch.sum(losses, dim=-1)  # [batch_size]
 
     per_example_loss = per_example_loss / losses.size(-1)
     loss = per_example_loss.mean()

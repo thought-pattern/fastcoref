@@ -1,5 +1,6 @@
-import numpy as np
 from collections import Counter
+
+import numpy as np
 from scipy.optimize import linear_sum_assignment
 
 
@@ -156,7 +157,7 @@ def lea(clusters, mention_to_gold):
         all_links = len(c) * (len(c) - 1) / 2.0
         for i, m in enumerate(c):
             if m in mention_to_gold:
-                for m2 in c[i + 1:]:
+                for m2 in c[i + 1 :]:
                     if m2 in mention_to_gold and mention_to_gold[m] == mention_to_gold[m2]:
                         common_links += 1
 
