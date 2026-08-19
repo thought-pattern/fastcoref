@@ -1,0 +1,56 @@
+name: Python Checks
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Ruff
+        run: pip install ruff
+
+      - name: Syntax and undefined-name check
+        run: ruff check --select E9,F63,F7,F82 .
+
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install tools
+        run: pip install pip-tools pip-audit
+
+      - name: Check for conflicts
+        continue-on-error: true
+        run: |
+          exit_code=0
+          file="requirements.txt"
+          echo "Checking $file for conflicts..."
+          if pip-compile "$file" --dry-run --output-file - > /dev/null 2>&1; then
+            echo "No conflicts found in $file"
+          else
+            echo "Conflicts detected in $file"
+            pip-compile "$file" --dry-run --output-file - || true
+            exit_code=1
+          fi
+          exit $exit_code
+
+      - name: Check for security vulnerabilities
+        continue-on-error: true
+        run: pip-audit --desc --requirement requirements.txt
