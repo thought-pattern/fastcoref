@@ -31,6 +31,7 @@ class FastCorefResolver:
         max_tokens_in_batch: int,
         enable_progress_bar,
     ):
+        self.name = name
         assert model_architecture in ["FCoref", "LingMessCoref"]
         if model_architecture == "FCoref":
             self.coref_model = FCoref(
