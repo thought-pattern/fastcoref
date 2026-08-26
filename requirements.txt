@@ -9,4 +9,4 @@ sentencepiece==0.2.2
 transformers==5.15.0
 datasets==5.0.1
 wandb==0.28.2
-protobuf==6.30.1
+protobuf==7.35.1
