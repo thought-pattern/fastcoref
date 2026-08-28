@@ -1,3 +1,5 @@
+"""Utilities for consts."""
+
 SUPPORTED_MODELS = ["bert", "roberta", "distilbert", "distilroberta", "longformer"]
 SPEAKER_START = "#####"
 SPEAKER_END = "###"
@@ -60,4 +62,11 @@ STOPWORDS = {
     "those",
 }
 
-CATEGORIES = {"pron-pron-comp": 0, "pron-pron-no-comp": 1, "pron-ent": 2, "match": 3, "contain": 4, "other": 5}
+CATEGORIES = {
+    "pron-pron-comp": 0,
+    "pron-pron-no-comp": 1,
+    "pron-ent": 2,
+    "match": 3,
+    "contain": 4,
+    "other": 5,
+}

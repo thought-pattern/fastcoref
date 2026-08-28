@@ -1,13 +1,18 @@
-import json
-import os
-import logging
-import torch
+"""Utilities for training."""
+
+from json import dump as json_dump
+from logging import getLogger as logging_getLogger
+from os import path as os_path
+
+from torch import cuda as torch_cuda
+from torch import tensor as torch_tensor
 from tqdm import tqdm
 from transformers import AdamW, get_linear_schedule_with_warmup
 from utilities.util import save_all
-import wandb
+from wandb import log as wandb_log
+from wandb import run as wandb_run
 
-logger = logging.getLogger(__name__)
+logger = logging_getLogger(__name__)
 
 
 def train(args, train_batches, model, tokenizer, evaluator):
@@ -19,32 +24,56 @@ def train(args, train_batches, model, tokenizer, evaluator):
     head_params = ["coref", "mention", "antecedent"]
 
     model_decay = [
-        p for n, p in model.named_parameters() if not any(hp in n for hp in head_params) and not any(nd in n for nd in no_decay)
+        p
+        for n, p in model.named_parameters()
+        if not any(hp in n for hp in head_params)
+        and not any(nd in n for nd in no_decay)
     ]
     model_no_decay = [
-        p for n, p in model.named_parameters() if not any(hp in n for hp in head_params) and any(nd in n for nd in no_decay)
+        p
+        for n, p in model.named_parameters()
+        if not any(hp in n for hp in head_params) and any(nd in n for nd in no_decay)
     ]
     head_decay = [
-        p for n, p in model.named_parameters() if any(hp in n for hp in head_params) and not any(nd in n for nd in no_decay)
+        p
+        for n, p in model.named_parameters()
+        if any(hp in n for hp in head_params) and not any(nd in n for nd in no_decay)
     ]
     head_no_decay = [
-        p for n, p in model.named_parameters() if any(hp in n for hp in head_params) and any(nd in n for nd in no_decay)
+        p
+        for n, p in model.named_parameters()
+        if any(hp in n for hp in head_params) and any(nd in n for nd in no_decay)
     ]
 
-    head_learning_rate = args.head_learning_rate if args.head_learning_rate else args.learning_rate
+    head_learning_rate = (
+        args.head_learning_rate if args.head_learning_rate else args.learning_rate
+    )
     optimizer_grouped_parameters = [
-        {"params": model_decay, "lr": args.learning_rate, "weight_decay": args.weight_decay},
+        {
+            "params": model_decay,
+            "lr": args.learning_rate,
+            "weight_decay": args.weight_decay,
+        },
         {"params": model_no_decay, "lr": args.learning_rate, "weight_decay": 0.0},
-        {"params": head_decay, "lr": head_learning_rate, "weight_decay": args.weight_decay},
+        {
+            "params": head_decay,
+            "lr": head_learning_rate,
+            "weight_decay": args.weight_decay,
+        },
         {"params": head_no_decay, "lr": head_learning_rate, "weight_decay": 0.0},
     ]
     optimizer = AdamW(
-        optimizer_grouped_parameters, lr=args.learning_rate, betas=(args.adam_beta1, args.adam_beta2), eps=args.adam_epsilon
+        optimizer_grouped_parameters,
+        lr=args.learning_rate,
+        betas=(args.adam_beta1, args.adam_beta2),
+        eps=args.adam_epsilon,
     )
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=t_total * 0.1, num_training_steps=t_total)
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer, num_warmup_steps=t_total * 0.1, num_training_steps=t_total
+    )
 
     # using mixed precision
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch_cuda.amp.GradScaler()
 
     # Train!
     logger.info("***** Running training *****")
@@ -57,21 +86,38 @@ def train(args, train_batches, model, tokenizer, evaluator):
     train_iterator = tqdm(range(int(args.train_epochs)), desc="Epoch")
     for _ in train_iterator:
         epoch_iterator = tqdm(train_batches, desc="Iteration")
-        for step, batch in enumerate(epoch_iterator):
-            batch["input_ids"] = torch.tensor(batch["input_ids"], device=args.device)
-            batch["attention_mask"] = torch.tensor(batch["attention_mask"], device=args.device)
-            batch["gold_clusters"] = torch.tensor(batch["gold_clusters"], device=args.device)
+        for _step, batch in enumerate(epoch_iterator):
+            batch["input_ids"] = torch_tensor(
+                batch.get("input_ids", []), device=args.device
+            )
+            batch["attention_mask"] = torch_tensor(
+                batch.get("attention_mask", False), device=args.device
+            )
+            batch["gold_clusters"] = torch_tensor(
+                batch.get("gold_clusters", []), device=args.device
+            )
             if "leftovers" in batch:
-                batch["leftovers"]["input_ids"] = torch.tensor(batch["leftovers"]["input_ids"], device=args.device)
-                batch["leftovers"]["attention_mask"] = torch.tensor(batch["leftovers"]["attention_mask"], device=args.device)
+                batch.get("leftovers", {})["input_ids"] = torch_tensor(
+                    batch.get("leftovers", {}).get("input_ids", []), device=args.device
+                )
+                batch.get("leftovers", {})["attention_mask"] = torch_tensor(
+                    batch.get("leftovers", {}).get("attention_mask", False),
+                    device=args.device,
+                )
 
             model.zero_grad()
             model.train()
 
-            with torch.cuda.amp.autocast():
-                outputs = model(batch, gold_clusters=batch["gold_clusters"], return_all_outputs=False)
+            with torch_cuda.amp.autocast():
+                outputs = model(
+                    batch,
+                    gold_clusters=batch.get("gold_clusters", []),
+                    return_all_outputs=False,
+                )
 
-            loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
+            loss = outputs[
+                0
+            ]  # model outputs are always tuple in transformers (see doc)
 
             tr_loss += loss.item()
             scaler.scale(loss).backward()
@@ -85,25 +131,28 @@ def train(args, train_batches, model, tokenizer, evaluator):
             if global_step % args.logging_steps == 0:
                 loss = (tr_loss - logging_loss) / args.logging_steps
                 logger.info(f"\nloss step {global_step}: {loss}")
-                wandb.log({"loss": loss}, step=global_step)
+                wandb_log({"loss": loss}, step=global_step)
                 logging_loss = tr_loss
 
             # Evaluation
             if global_step % args.eval_steps == 0:
                 results = evaluator.evaluate(model, prefix=f"step_{global_step}")
-                wandb.log(results, step=global_step)
+                wandb_log(results, step=global_step)
 
-                recall = results["recall"]
+                recall = results.get("recall", False)
                 if recall > best_recall:
                     best_recall, best_global_step = recall, global_step
-                    wandb.run.summary["best_recall"] = best_recall
+                    wandb_run.summary["best_recall"] = best_recall
 
                     # Save model
-                    output_dir = os.path.join(args.output_dir, "model")
+                    output_dir = os_path.join(args.output_dir, "model")
                     save_all(tokenizer=tokenizer, model=model, output_dir=output_dir)
-                logger.info(f"best recall is {best_recall} on global step {best_global_step}")
+                logger.info(
+                    f"best recall is {best_recall} on global step {best_global_step}"
+                )
 
-    with open(os.path.join(args.output_dir, "best_recall.json"), "w") as f:
-        json.dump({"best_recall": best_recall, "best_global_step": best_global_step}, f)
+    with open(os_path.join(args.output_dir, "best_recall.json"), "w") as f:
+        json_dump({"best_recall": best_recall, "best_global_step": best_global_step}, f)
 
-    return global_step, tr_loss / global_step
+    _return_value = global_step, tr_loss / global_step
+    return _return_value

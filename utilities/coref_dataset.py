@@ -1,28 +1,30 @@
-import logging
-import os.path
-from collections import defaultdict
+"""Utilities for coref dataset."""
 
-import datasets
-from datasets.fingerprint import Hasher
+from collections import defaultdict
+from logging import getLogger as logging_getLogger
+from os import path as os_path
+
 from datasets import Dataset, DatasetDict
+from datasets import load_from_disk as datasets_load_from_disk
+from datasets.fingerprint import Hasher
 from tqdm import tqdm
 
-from utilities import util, consts
+from utilities import consts, util
 from utilities.collate import LeftOversCollator, PadCollator
 
-logger = logging.getLogger(__name__)
+logger = logging_getLogger(__name__)
 
 
 def _tokenize(tokenizer, tokens, clusters, speakers):
     token_to_new_token_map = []
     new_token_map = []
     new_tokens = []
-    last_speaker = None
+    last_speaker = False
 
-    for idx, (token, speaker) in enumerate(zip(tokens, speakers)):
+    for idx, (token, speaker) in enumerate(zip(tokens, speakers, strict=False)):
         if last_speaker != speaker:
             new_tokens += [consts.SPEAKER_START, speaker, consts.SPEAKER_END]
-            new_token_map += [None, None, None]
+            new_token_map += [False, False, False]
             last_speaker = speaker
         token_to_new_token_map.append(len(new_tokens))
         new_token_map.append(idx)
@@ -30,9 +32,16 @@ def _tokenize(tokenizer, tokens, clusters, speakers):
 
     for cluster in clusters:
         for start, end in cluster:
-            assert tokens[start : end + 1] == new_tokens[token_to_new_token_map[start] : token_to_new_token_map[end] + 1]
+            assert (
+                tokens[start : end + 1]
+                == new_tokens[
+                    token_to_new_token_map[start] : token_to_new_token_map[end] + 1
+                ]
+            )
 
-    encoded_text = tokenizer(new_tokens, add_special_tokens=True, is_split_into_words=True)
+    encoded_text = tokenizer(
+        new_tokens, add_special_tokens=True, is_split_into_words=True
+    )
 
     new_clusters = [
         [
@@ -45,39 +54,60 @@ def _tokenize(tokenizer, tokens, clusters, speakers):
         for cluster in clusters
     ]
 
-    return {
+    _return_value = {
         "tokens": tokens,
-        "input_ids": encoded_text["input_ids"],
+        "input_ids": encoded_text.get("input_ids", []),
         "gold_clusters": new_clusters,
         "subtoken_map": encoded_text.word_ids(),
         "new_token_map": new_token_map,
     }
+    return _return_value
 
 
 def encode(example, tokenizer):
     if "clusters" not in example:
         example["clusters"] = []
-    encoded_example = _tokenize(tokenizer, example["tokens"], example["clusters"], example["speakers"])
+    encoded_example = _tokenize(
+        tokenizer,
+        example.get("tokens", 0),
+        example.get("clusters", []),
+        example.get("speakers", []),
+    )
 
-    gold_clusters = encoded_example["gold_clusters"]
+    gold_clusters = encoded_example.get("gold_clusters", [])
     encoded_example["num_clusters"] = len(gold_clusters) if gold_clusters else 0
-    encoded_example["max_cluster_size"] = max(len(c) for c in gold_clusters) if gold_clusters else 0
-    encoded_example["length"] = len(encoded_example["input_ids"])
+    encoded_example["max_cluster_size"] = (
+        max(len(c) for c in gold_clusters) if gold_clusters else 0
+    )
+    encoded_example["length"] = len(encoded_example.get("input_ids", []))
 
     return encoded_example
 
 
-def create(tokenizer, train_file=None, dev_file=None, test_file=None, cache_dir="cache", api=False):
-    if train_file is None and dev_file is None and test_file is None:
+def create(
+    tokenizer,
+    train_file=False,
+    dev_file=False,
+    test_file=False,
+    cache_dir="cache",
+    api=False,
+):
+    if dev_file is None:
+        dev_file = False
+    if test_file is None:
+        test_file = False
+    if train_file is None:
+        train_file = False
+    if train_file is False and dev_file is False and test_file is False:
         raise Exception("Provide at least train/dev/test file to create the dataset")
 
     dataset_files = {"train": train_file, "dev": dev_file, "test": test_file}
 
     cache_key = Hasher.hash(dataset_files)
-    dataset_path = os.path.join(cache_dir, cache_key)
+    dataset_path = os_path.join(cache_dir, cache_key)
 
     try:
-        dataset = datasets.load_from_disk(dataset_path)
+        dataset = datasets_load_from_disk(dataset_path)
         logger.info(f"Dataset restored from: {dataset_path}")
     except FileNotFoundError:
         logger.info("Creating dataset...")
@@ -109,20 +139,20 @@ def create_batches(sampler, dataset_files, cache_dir="cache"):
         raise NotImplementedError("this collator not implemented!")
 
     cache_key = Hasher.hash(key)
-    dataset_path = os.path.join(cache_dir, cache_key)
+    dataset_path = os_path.join(cache_dir, cache_key)
 
     try:
-        batches = datasets.load_from_disk(dataset_path)
+        batches = datasets_load_from_disk(dataset_path)
         logger.info(f"Batches restored from: {dataset_path}")
     except FileNotFoundError:
         logger.info(f"Creating batches for {len(sampler.dataset)} examples...")
 
         # huggingface dataset cannot save tensors. so we will save lists and on train loop transform to tensors.
-        batches_dict = defaultdict(lambda: [])
+        batches_dict = defaultdict(list)
 
-        for i, batch in enumerate(tqdm(sampler)):
+        for _i, batch in enumerate(tqdm(sampler)):
             for k, v in batch.items():
-                batches_dict[k].append(v)
+                batches_dict.get(k, []).append(v)
 
         batches = Dataset.from_dict(batches_dict)
         logger.info(f"{len(batches)} batches created.")

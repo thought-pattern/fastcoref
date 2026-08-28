@@ -1,3 +1,5 @@
+"""Tests for local test."""
+
 from fastcoref import FCoref, LingMessCoref
 
 texts = [
@@ -8,15 +10,21 @@ texts = [
 
 model = FCoref(device="cpu")
 
-preds = model.predict(texts=texts[0], max_tokens_in_batch=5000, output_file="out_test.jsonlines")
+preds = model.predict(
+    texts=texts[0], max_tokens_in_batch=5000, output_file="out_test.jsonlines"
+)
 print(preds)
 
-preds = model.predict(texts=texts, max_tokens_in_batch=5000, output_file="out_test.jsonlines")
+preds = model.predict(
+    texts=texts, max_tokens_in_batch=5000, output_file="out_test.jsonlines"
+)
 print(preds)
 
 model = FCoref(device="cpu", enable_progress_bar=False)
 
-preds = model.predict(texts=texts, max_tokens_in_batch=5000, output_file="out_test.jsonlines")
+preds = model.predict(
+    texts=texts, max_tokens_in_batch=5000, output_file="out_test.jsonlines"
+)
 print(preds)
 
 for p in preds:

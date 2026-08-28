@@ -1,5 +1,6 @@
-import spacy
+"""Tests for test spacy component."""
 
+from spacy import load as spacy_load
 
 texts = [
     "We are so happy to see you using our coref package. This package is very fast!",
@@ -11,14 +12,25 @@ texts = [
 # FCoref
 
 # Test default values
-nlp_fcoref = spacy.load("en_core_web_sm", exclude=["parser", "lemmatizer", "ner", "textcat"])  # Resolving text requires pos tagging
+nlp_fcoref = spacy_load(
+    "en_core_web_sm", exclude=["parser", "lemmatizer", "ner", "textcat"]
+)  # Resolving text requires pos tagging
 nlp_fcoref.add_pipe("fastcoref")
 doc = nlp_fcoref(texts[0])
 print(doc._.coref_clusters)
 
 # Test not default values
-nlp_fcoref = spacy.load("en_core_web_sm", exclude=["parser", "lemmatizer", "ner", "textcat"])
-nlp_fcoref.add_pipe("fastcoref", config={"model_architecture": "FCoref", "model_path": "biu-nlp/f-coref", "device": "cpu"})
+nlp_fcoref = spacy_load(
+    "en_core_web_sm", exclude=["parser", "lemmatizer", "ner", "textcat"]
+)
+nlp_fcoref.add_pipe(
+    "fastcoref",
+    config={
+        "model_architecture": "FCoref",
+        "model_path": "biu-nlp/f-coref",
+        "device": "cpu",
+    },
+)
 doc = nlp_fcoref(texts[0])
 assert doc._.resolved_text == ""
 print(doc._.coref_clusters)
@@ -39,9 +51,16 @@ for doc in doc_list:
 # LingMess
 
 # Test not default values
-nlp_fcoref = spacy.load("en_core_web_sm", exclude=["parser", "lemmatizer", "ner", "textcat"])
+nlp_fcoref = spacy_load(
+    "en_core_web_sm", exclude=["parser", "lemmatizer", "ner", "textcat"]
+)
 nlp_fcoref.add_pipe(
-    "fastcoref", config={"model_architecture": "LingMessCoref", "model_path": "biu-nlp/lingmess-coref", "device": "cpu"}
+    "fastcoref",
+    config={
+        "model_architecture": "LingMessCoref",
+        "model_path": "biu-nlp/lingmess-coref",
+        "device": "cpu",
+    },
 )
 doc = nlp_fcoref(texts[0])
 assert doc._.resolved_text == ""

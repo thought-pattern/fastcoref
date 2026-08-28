@@ -1,5 +1,6 @@
-from fastcoref import TrainingArgs, CorefTrainer
+"""Tests for test trainer."""
 
+from fastcoref import CorefTrainer, TrainingArgs
 
 args = TrainingArgs(
     output_dir="test-trainer",
@@ -18,6 +19,11 @@ trainer = CorefTrainer(
 trainer.train()
 trainer.evaluate(test=True)
 
-trainer = CorefTrainer(args=args, train_file="out_test.jsonlines", dev_file="out_test.jsonlines", test_file="out_test.jsonlines")
+trainer = CorefTrainer(
+    args=args,
+    train_file="out_test.jsonlines",
+    dev_file="out_test.jsonlines",
+    test_file="out_test.jsonlines",
+)
 trainer.train()
 trainer.evaluate(test=True)

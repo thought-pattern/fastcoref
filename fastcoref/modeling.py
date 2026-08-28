@@ -1,17 +1,21 @@
-import json
-import logging
-from abc import ABC
-from typing import List, Union
+"""Utilities for modeling."""
 
-import numpy as np
-import spacy
-import torch
-import transformers
+from json import dumps as json_dumps
+from logging import INFO as logging_INFO
+from logging import basicConfig as logging_basicConfig
+from logging import getLogger as logging_getLogger
+
 from datasets import Dataset
+from numpy import nonzero as np_nonzero
+from spacy import load as spacy_load
 from spacy.cli import download
 from spacy.language import Language
+from torch import cuda as torch_cuda
+from torch import device as torch_device
+from torch import no_grad as torch_no_grad
 from tqdm.auto import tqdm
 from transformers import AutoConfig, AutoTokenizer
+from transformers import logging as transformers_logging
 
 from .coref_models.modeling_fcoref import FCorefModel
 from .coref_models.modeling_lingmess import LingMessModel
@@ -25,12 +29,18 @@ from .utilities.util import (
 )
 
 # Setup logging
-logger = logging.getLogger(__name__)
-logging.basicConfig(format="%(asctime)s - %(levelname)s - \t %(message)s", datefmt="%m/%d/%Y %H:%M:%S", level=logging.INFO)
+logger = logging_getLogger(__name__)
+logging_basicConfig(
+    format="%(asctime)s - %(levelname)s - \t %(message)s",
+    datefmt="%m/%d/%Y %H:%M:%S",
+    level=logging_INFO,
+)
 
 
 class CorefResult:
-    def __init__(self, text, clusters, char_map, reverse_char_map, coref_logit, text_idx):
+    def __init__(
+        self, text, clusters, char_map, reverse_char_map, coref_logit, text_idx
+    ):
         self.text = text
         self.clusters = clusters
         self.char_map = char_map
@@ -40,9 +50,13 @@ class CorefResult:
 
     def get_clusters(self, as_strings=True):
         if not as_strings:
-            return [[self.char_map[mention][1] for mention in cluster] for cluster in self.clusters]
+            _return_value = [
+                [self.char_map[mention][1] for mention in cluster]
+                for cluster in self.clusters
+            ]
+            return _return_value
 
-        return [
+        _return_value = [
             [
                 self.text[self.char_map[mention][1][0] : self.char_map[mention][1][1]]
                 for mention in cluster
@@ -50,20 +64,27 @@ class CorefResult:
             ]
             for cluster in self.clusters
         ]
+        return _return_value
 
     def get_logit(self, span_i, span_j):
         if span_i not in self.reverse_char_map:
-            raise ValueError(f'span_i="{self.text[span_i[0]:span_i[1]]}" is not an entity in this model!')
+            raise ValueError(
+                f'span_i="{self.text[span_i[0] : span_i[1]]}" is not an entity in this model!'
+            )
         if span_j not in self.reverse_char_map:
-            raise ValueError(f'span_i="{self.text[span_j[0]:span_j[1]]}" is not an entity in this model!')
+            raise ValueError(
+                f'span_i="{self.text[span_j[0] : span_j[1]]}" is not an entity in this model!'
+            )
 
         span_i_idx = self.reverse_char_map[span_i][0]  # 0 is to get the span index
         span_j_idx = self.reverse_char_map[span_j][0]
 
         if span_i_idx < span_j_idx:
-            return self.coref_logit[span_j_idx, span_i_idx]
+            _return_value = self.coref_logit[span_j_idx, span_i_idx]
+            return _return_value
 
-        return self.coref_logit[span_i_idx, span_j_idx]
+        _return_value = self.coref_logit[span_i_idx, span_j_idx]
+        return _return_value
 
     def get_resolved_text(self):
         """Replace coreferent mentions with their canonical antecedent (longest mention in each cluster)."""
@@ -75,11 +96,13 @@ class CorefResult:
 
         # Build replacement list: for each cluster, the longest mention is the antecedent
         replacements = []
-        for char_cluster, str_cluster in zip(char_clusters, str_clusters):
+        for char_cluster, str_cluster in zip(char_clusters, str_clusters, strict=False):
             if len(char_cluster) < 2:
                 continue
             # Pick longest mention as canonical
-            canonical_idx = max(range(len(str_cluster)), key=lambda i: len(str_cluster[i]))
+            canonical_idx = max(
+                range(len(str_cluster)), key=lambda i: len(str_cluster[i])
+            )
             canonical = str_cluster[canonical_idx]
             for i, (start, end) in enumerate(char_cluster):
                 if i != canonical_idx:
@@ -100,14 +123,28 @@ class CorefResult:
             text_to_print = f"{self.text[:50]}..."
         else:
             text_to_print = self.text
-        return f'CorefResult(text="{text_to_print}", clusters={self.get_clusters()})'
+        _return_value = (
+            f'CorefResult(text="{text_to_print}", clusters={self.get_clusters()})'
+        )
+        return _return_value
 
     def __repr__(self):
-        return self.__str__()
+        _return_value = self.__str__()
+        return _return_value
 
 
-class CorefModel(ABC):
-    def __init__(self, model_name_or_path, coref_class, collator_class, enable_progress_bar, device=None, nlp="en_core_web_sm"):
+class CorefModel:
+    def __init__(
+        self,
+        model_name_or_path,
+        coref_class,
+        collator_class,
+        enable_progress_bar,
+        device=False,
+        nlp="en_core_web_sm",
+    ):
+        if nlp is None:
+            nlp = "en_core_web_sm"
         self.model_name_or_path = model_name_or_path
         self.device = device
         self.seed = 42
@@ -115,33 +152,47 @@ class CorefModel(ABC):
         self.enable_progress_bar = enable_progress_bar
 
         config = AutoConfig.from_pretrained(self.model_name_or_path)
-        self.max_segment_len = config.coref_head["max_segment_len"]
-        self.max_doc_len = config.coref_head["max_doc_len"] if "max_doc_len" in config.coref_head else None
+        self.max_segment_len = config.coref_head.get("max_segment_len", False)
+        self.max_doc_len = (
+            config.coref_head.get("max_doc_len", False)
+            if "max_doc_len" in config.coref_head
+            else False
+        )
 
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path, use_fast=True, add_prefix_space=True, verbose=False)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.model_name_or_path, use_fast=True, add_prefix_space=True, verbose=False
+        )
 
         if collator_class == PadCollator:
             self.collator = PadCollator(tokenizer=self.tokenizer, device=self.device)
         elif collator_class == LeftOversCollator:
             self.collator = LeftOversCollator(
-                tokenizer=self.tokenizer, device=self.device, max_segment_len=config.coref_head["max_segment_len"]
+                tokenizer=self.tokenizer,
+                device=self.device,
+                max_segment_len=config.coref_head.get("max_segment_len", False),
             )
         else:
             raise NotImplementedError(
-                f"Class collator {type(collator_class)} is not supported! " f"only LeftOversCollator or PadCollator supported"
+                f"Class collator {type(collator_class)} is not supported! only LeftOversCollator or PadCollator supported"
             )
-        if nlp is None:
-            self.nlp = None
-            logger.warning("You didn't specify a spacy model, you'll need to provide tokenized text in the `predict` function.")
+        if nlp == "en_core_web_sm":
+            self.nlp = False
+            logger.warning(
+                "You didn't specify a spacy model, you'll need to provide tokenized text in the `predict` function."
+            )
         elif isinstance(nlp, Language):
             self.nlp = nlp
         else:
             try:
-                self.nlp = spacy.load(nlp, exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"])
+                self.nlp = spacy_load(
+                    nlp, exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"]
+                )
             except OSError:
                 # TODO: this is a workaround it is not clear how to add "en_core_web_sm" to setup.py
                 download(nlp)
-                self.nlp = spacy.load(nlp, exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"])
+                self.nlp = spacy_load(
+                    nlp, exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"]
+                )
 
         self.model = coref_class.from_pretrained(
             self.model_name_or_path,
@@ -150,16 +201,19 @@ class CorefModel(ABC):
         self.model.to(self.device)
 
         t_params, h_params = [p / 1000000 for p in self.model.num_parameters()]
-        logger.info(f"Model Parameters: {t_params + h_params:.1f}M, " f"Transformer: {t_params:.1f}M, Coref head: {h_params:.1f}M")
+        logger.info(
+            f"Model Parameters: {t_params + h_params:.1f}M, Transformer: {t_params:.1f}M, Coref head: {h_params:.1f}M"
+        )
 
         set_seed(self)
-        transformers.logging.set_verbosity_error()
+        transformers_logging.set_verbosity_error()
 
     def _set_device(self):
-        if self.device is None:
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.device = torch.device(self.device)
-        self.n_gpu = torch.cuda.device_count()
+        if self.device is False:
+            self.device = "cuda" if torch_cuda.is_available() else "cpu"
+        self.device = torch_device(self.device)
+        self.n_gpu = torch_cuda.device_count()
+        return False
 
     def _create_dataset(self, texts, is_split_into_words):
         logger.info(f"Tokenize {len(texts)} inputs...")
@@ -174,7 +228,10 @@ class CorefModel(ABC):
             encode,
             batched=True,
             batch_size=10000,
-            fn_kwargs={"tokenizer": self.tokenizer, "nlp": self.nlp if not is_split_into_words else None},
+            fn_kwargs={
+                "tokenizer": self.tokenizer,
+                "nlp": self.nlp if not is_split_into_words else False,
+            },
         )
 
         return dataset
@@ -191,25 +248,31 @@ class CorefModel(ABC):
         return dataloader
 
     def _batch_inference(self, batch):
-        texts = batch["text"]
-        subtoken_map = batch["subtoken_map"]
-        token_to_char = batch["offset_mapping"]
-        idxs = batch["idx"]
-        with torch.no_grad():
+        texts = batch.get("text", [])
+        subtoken_map = batch.get("subtoken_map", False)
+        token_to_char = batch.get("offset_mapping", {})
+        idxs = batch.get("idx", [])
+        with torch_no_grad():
             outputs = self.model(batch, return_all_outputs=True)
 
         outputs_np = tuple(tensor.cpu().numpy() for tensor in outputs)
 
         span_starts, span_ends, mention_logits, coref_logits = outputs_np
-        doc_indices, mention_to_antecedent = create_mention_to_antecedent(span_starts, span_ends, coref_logits)
+        doc_indices, mention_to_antecedent = create_mention_to_antecedent(
+            span_starts, span_ends, coref_logits
+        )
 
         results = []
 
         for i in range(len(texts)):
-            doc_mention_to_antecedent = mention_to_antecedent[np.nonzero(doc_indices == i)]
+            doc_mention_to_antecedent = mention_to_antecedent[
+                np_nonzero(doc_indices == i)
+            ]
             predicted_clusters = create_clusters(doc_mention_to_antecedent)
 
-            char_map, reverse_char_map = align_to_char_level(span_starts[i], span_ends[i], token_to_char[i], subtoken_map[i])
+            char_map, reverse_char_map = align_to_char_level(
+                span_starts[i], span_ends[i], token_to_char[i], subtoken_map[i]
+            )
 
             result = CorefResult(
                 text=texts[i],
@@ -233,19 +296,20 @@ class CorefModel(ABC):
             with tqdm(desc="Inference", total=len(dataloader.dataset)) as progress_bar:
                 for batch in dataloader:
                     results.extend(self._batch_inference(batch))
-                    progress_bar.update(n=len(batch["text"]))
+                    progress_bar.update(n=len(batch.get("text", "")))
         else:
             for batch in dataloader:
                 results.extend(self._batch_inference(batch))
 
-        return sorted(results, key=lambda res: res.text_idx)
+        _return_value = sorted(results, key=lambda res: res.text_idx)
+        return _return_value
 
     def predict(
         self,
-        texts: Union[str, List[str], List[List[str]]],  # similar to huggingface tokenizer inputs
+        texts: object,  # similar to huggingface tokenizer inputs
         is_split_into_words: bool = False,
         max_tokens_in_batch: int = 10000,
-        output_file: str = None,
+        output_file: str = "",
     ):
         """
         texts (str, List[str], List[List[str]]) — The sequence or batch of sequences to be encoded.
@@ -256,6 +320,9 @@ class CorefModel(ABC):
         """
 
         # Input type checking for clearer error
+        if output_file is None:
+            output_file = ""
+
         def _is_valid_text_input(texts, is_split_into_words):
             if isinstance(texts, str) and not is_split_into_words:
                 # Strings are fine
@@ -270,7 +337,8 @@ class CorefModel(ABC):
                     return True
                 elif all([isinstance(t, (list, tuple)) for t in texts]):
                     # ... list with an empty list or with a list of strings
-                    return len(texts[0]) == 0 or isinstance(texts[0][0], str)
+                    _return_value = len(texts[0]) == 0 or isinstance(texts[0][0], str)
+                    return _return_value
                 else:
                     return False
             else:
@@ -289,7 +357,11 @@ class CorefModel(ABC):
             )
 
         if is_split_into_words:
-            is_batched = isinstance(texts, (list, tuple)) and texts and isinstance(texts[0], (list, tuple))
+            is_batched = (
+                isinstance(texts, (list, tuple))
+                and texts
+                and isinstance(texts[0], (list, tuple))
+            )
         else:
             is_batched = isinstance(texts, (list, tuple))
 
@@ -300,7 +372,7 @@ class CorefModel(ABC):
         dataloader = self._prepare_batches(dataset, max_tokens_in_batch)
 
         preds = self._inference(dataloader)
-        if output_file is not None:
+        if output_file != "":
             with open(output_file, "w") as f:
                 data = [
                     {
@@ -310,17 +382,44 @@ class CorefModel(ABC):
                     }
                     for p in preds
                 ]
-                f.write("\n".join(map(json.dumps, data)))
+                f.write("\n".join(map(json_dumps, data)))
         if not is_batched:
-            return preds[0]
+            _return_value = preds[0]
+            return _return_value
         return preds
 
 
 class FCoref(CorefModel):
-    def __init__(self, model_name_or_path="biu-nlp/f-coref", device=None, nlp="en_core_web_sm", enable_progress_bar=True):
-        super().__init__(model_name_or_path, FCorefModel, LeftOversCollator, enable_progress_bar, device, nlp)
+    def __init__(
+        self,
+        model_name_or_path="biu-nlp/f-coref",
+        device=False,
+        nlp="en_core_web_sm",
+        enable_progress_bar=True,
+    ):
+        super().__init__(
+            model_name_or_path,
+            FCorefModel,
+            LeftOversCollator,
+            enable_progress_bar,
+            device,
+            nlp,
+        )
 
 
 class LingMessCoref(CorefModel):
-    def __init__(self, model_name_or_path="biu-nlp/lingmess-coref", device=None, nlp="en_core_web_sm", enable_progress_bar=True):
-        super().__init__(model_name_or_path, LingMessModel, PadCollator, enable_progress_bar, device, nlp)
+    def __init__(
+        self,
+        model_name_or_path="biu-nlp/lingmess-coref",
+        device=False,
+        nlp="en_core_web_sm",
+        enable_progress_bar=True,
+    ):
+        super().__init__(
+            model_name_or_path,
+            LingMessModel,
+            PadCollator,
+            enable_progress_bar,
+            device,
+            nlp,
+        )

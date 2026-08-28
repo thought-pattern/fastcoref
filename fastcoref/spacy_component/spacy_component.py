@@ -1,3 +1,5 @@
+"""Utilities for spacy component."""
+
 from typing import List, Tuple
 
 from spacy import Language, util
@@ -12,7 +14,7 @@ from .. import FCoref, LingMessCoref
     default_config={
         "model_architecture": "FCoref",  # FCoref or LingMessCoref
         "model_path": "biu-nlp/f-coref",  # You can specify your own trained model path
-        "device": None,  # "cuda" or "cpu" None defaults to cuda
+        "device": False,  # "cuda" or "cpu" None defaults to cuda
         "max_tokens_in_batch": 10000,
         "enable_progress_bar": True,
     },
@@ -35,18 +37,24 @@ class FastCorefResolver:
         assert model_architecture in ["FCoref", "LingMessCoref"]
         if model_architecture == "FCoref":
             self.coref_model = FCoref(
-                model_name_or_path=model_path, device=device, nlp=nlp, enable_progress_bar=enable_progress_bar
+                model_name_or_path=model_path,
+                device=device,
+                nlp=nlp,
+                enable_progress_bar=enable_progress_bar,
             )
         elif model_architecture == "LingMessCoref":
             self.coref_model = LingMessCoref(
-                model_name_or_path=model_path, device=device, nlp=nlp, enable_progress_bar=enable_progress_bar
+                model_name_or_path=model_path,
+                device=device,
+                nlp=nlp,
+                enable_progress_bar=enable_progress_bar,
             )
         self.max_tokens_in_batch = max_tokens_in_batch
         # Register custom extension on the Doc
         if not Doc.has_extension("resolved_text"):
             Doc.set_extension("resolved_text", default="")
         if not Doc.has_extension("coref_clusters"):
-            Doc.set_extension("coref_clusters", default=None)
+            Doc.set_extension("coref_clusters", default=False)
 
     def _get_span_noun_indices(self, doc: Doc, cluster: List[Tuple]) -> List[int]:
         """
@@ -57,10 +65,16 @@ class FastCorefResolver:
         """
         spans = [doc.char_span(span[0], span[1]) for span in cluster]
         spans_pos = [[token.pos_ for token in span] for span in spans]
-        span_noun_indices = [i for i, span_pos in enumerate(spans_pos) if any(pos in span_pos for pos in ["NOUN", "PROPN"])]
+        span_noun_indices = [
+            i
+            for i, span_pos in enumerate(spans_pos)
+            if any(pos in span_pos for pos in ["NOUN", "PROPN"])
+        ]
         return span_noun_indices
 
-    def _get_cluster_head(self, doc: Doc, cluster: List[Tuple], noun_indices: List[int]):
+    def _get_cluster_head(
+        self, doc: Doc, cluster: List[Tuple], noun_indices: List[int]
+    ):
         """
         > Given a spaCy Doc, a coreference cluster, and a list of noun indices, return the head span and its start and end
         indices
@@ -86,9 +100,14 @@ class FastCorefResolver:
         :type all_spans: List[List[int]]
         :return: A list of all spans that are not contained in any other span.
         """
-        return any([s[0] >= span[0] and s[1] <= span[1] and s != span for s in all_spans])
+        _return_value = any(
+            [s[0] >= span[0] and s[1] <= span[1] and s != span for s in all_spans]
+        )
+        return _return_value
 
-    def _core_logic_part(self, document: Doc, coref: List[int], resolved: List[str], mention_span: Span):
+    def _core_logic_part(
+        self, document: Doc, coref: List[int], resolved: List[str], mention_span: Span
+    ):
         """
         If the last token of the mention is a possessive pronoun, then add an apostrophe and an s to the mention.
         Otherwise, just add the last token to the mention
@@ -108,7 +127,9 @@ class FastCorefResolver:
                 test_token_test = True
                 break
         if test_token_test:
-            resolved[char_span.start] = mention_span.text + "'s" + final_token.whitespace_
+            resolved[char_span.start] = (
+                mention_span.text + "'s" + final_token.whitespace_
+            )
         else:
             resolved[char_span.start] = mention_span.text + final_token.whitespace_
         for i in range(char_span.start + 1, char_span.end):
@@ -130,9 +151,13 @@ class FastCorefResolver:
             for cluster in clusters:
                 indices = self._get_span_noun_indices(doc, cluster)
                 if indices:
-                    mention_span, mention = self._get_cluster_head(doc, cluster, indices)
+                    mention_span, mention = self._get_cluster_head(
+                        doc, cluster, indices
+                    )
                     for coref in cluster:
-                        if coref != mention and not self._is_containing_other_spans(coref, all_spans):
+                        if coref != mention and not self._is_containing_other_spans(
+                            coref, all_spans
+                        ):
                             self._core_logic_part(doc, coref, resolved, mention_span)
             doc._.resolved_text = "".join(resolved)
         doc._.coref_clusters = clusters
@@ -140,7 +165,10 @@ class FastCorefResolver:
 
     def pipe(self, stream, batch_size=512, resolve_text=False):
         for docs in util.minibatch(stream, size=batch_size):
-            preds = self.coref_model.predict(texts=[doc.text for doc in docs], max_tokens_in_batch=self.max_tokens_in_batch)
+            preds = self.coref_model.predict(
+                texts=[doc.text for doc in docs],
+                max_tokens_in_batch=self.max_tokens_in_batch,
+            )
             for idx, pred in enumerate(preds):
                 clusters = pred.get_clusters(as_strings=False)
                 doc = docs[idx]
@@ -150,10 +178,19 @@ class FastCorefResolver:
                     for cluster in clusters:
                         indices = self._get_span_noun_indices(doc, cluster)
                         if indices:
-                            mention_span, mention = self._get_cluster_head(doc, cluster, indices)
+                            mention_span, mention = self._get_cluster_head(
+                                doc, cluster, indices
+                            )
                             for coref in cluster:
-                                if coref != mention and not self._is_containing_other_spans(coref, all_spans):
-                                    self._core_logic_part(doc, coref, resolved, mention_span)
+                                if (
+                                    coref != mention
+                                    and not self._is_containing_other_spans(
+                                        coref, all_spans
+                                    )
+                                ):
+                                    self._core_logic_part(
+                                        doc, coref, resolved, mention_span
+                                    )
                     doc._.resolved_text = "".join(resolved)
                 doc._.coref_clusters = clusters
                 yield doc

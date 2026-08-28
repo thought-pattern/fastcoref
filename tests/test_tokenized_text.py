@@ -1,3 +1,5 @@
+"""Tests for test tokenized text."""
+
 from fastcoref import FCoref
 
 model = FCoref(device="cpu")
@@ -36,8 +38,39 @@ texts = [
         "fast",
         "!",
     ],
-    ["The", "man", "tried", "to", "put", "the", "boot", "on", "his", "foot", "but", "it", "was", "too", "small", "."],
-    ["I", "have", "a", "dog", ".", "The", "dog", "'s", "toys", "are", "really", "cool", "."],
+    [
+        "The",
+        "man",
+        "tried",
+        "to",
+        "put",
+        "the",
+        "boot",
+        "on",
+        "his",
+        "foot",
+        "but",
+        "it",
+        "was",
+        "too",
+        "small",
+        ".",
+    ],
+    [
+        "I",
+        "have",
+        "a",
+        "dog",
+        ".",
+        "The",
+        "dog",
+        "'s",
+        "toys",
+        "are",
+        "really",
+        "cool",
+        ".",
+    ],
 ]
 
 preds = model.predict(texts, is_split_into_words=True)
