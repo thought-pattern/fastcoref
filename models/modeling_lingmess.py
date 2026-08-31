@@ -144,17 +144,17 @@ class LingMessModel(BertPreTrainedModel):
 
     def num_parameters(self) -> tuple:
         def head_filter(x):
-            _return_value = x[1].requires_grad and any(
+            computed_return_value = x[1].requires_grad and any(
                 hp in x[0] for hp in ["coref", "mention", "antecedent"]
             )
-            return _return_value
+            return computed_return_value
 
         head_params = filter(head_filter, self.named_parameters())
         head_params = sum(p.numel() for n, p in head_params)
-        _return_value = super().num_parameters() - head_params, head_params
-        return _return_value
+        computed_return_value = super().num_parameters() - head_params, head_params
+        return computed_return_value
 
-    def _get_span_mask(self, batch_size, k, max_k):
+    def get_span_mask(self, batch_size, k, max_k):
         """
         :param batch_size: int
         :param k: tensor of size [batch_size], with the required k for each example
@@ -164,10 +164,10 @@ class LingMessModel(BertPreTrainedModel):
         size = (batch_size, max_k)
         idx = torch_arange(max_k, device=self.device).unsqueeze(0).expand(size)
         len_expanded = k.unsqueeze(1).expand(size)
-        _return_value = (idx < len_expanded).int()
-        return _return_value
+        computed_return_value = (idx < len_expanded).int()
+        return computed_return_value
 
-    def _prune_topk_mentions(self, mention_logits, attention_mask):
+    def prune_topk_mentions(self, mention_logits, attention_mask):
         """
         :param mention_logits: Shape [batch_size, seq_length, seq_length]
         :param attention_mask: [batch_size, seq_length]
@@ -186,7 +186,7 @@ class LingMessModel(BertPreTrainedModel):
             mention_logits.view(batch_size, -1), dim=-1, k=max_k
         )  # [batch_size, max_k]
 
-        span_mask = self._get_span_mask(batch_size, k, max_k)  # [batch_size, max_k]
+        span_mask = self.get_span_mask(batch_size, k, max_k)  # [batch_size, max_k]
         # drop the invalid indices and set them to the last index
         topk_1d_indices = (topk_1d_indices * span_mask) + (1 - span_mask) * (
             (seq_length**2) - 1
@@ -223,7 +223,7 @@ class LingMessModel(BertPreTrainedModel):
             topk_1d_indices,
         )
 
-    def _mask_antecedent_logits(
+    def mask_antecedent_logits(
         self, antecedent_logits, span_mask, categories_masks=False
     ):
         if categories_masks is None:
@@ -241,7 +241,7 @@ class LingMessModel(BertPreTrainedModel):
         antecedent_logits = mask_tensor(antecedent_logits, mask)
         return antecedent_logits
 
-    def _get_clusters_labels(self, span_starts, span_ends, all_clusters):
+    def get_clusters_labels(self, span_starts, span_ends, all_clusters):
         """
         :param span_starts: [batch_size, max_k]
         :param span_ends: [batch_size, max_k]
@@ -272,7 +272,7 @@ class LingMessModel(BertPreTrainedModel):
         new_cluster_labels = torch_tensor(new_cluster_labels, device=self.device)
         return new_cluster_labels
 
-    def _get_categories_labels(
+    def get_categories_labels(
         self, tokens, subtoken_map, new_token_map, span_starts, span_ends
     ):
         batch_size, max_k = span_starts.size()
@@ -309,7 +309,7 @@ class LingMessModel(BertPreTrainedModel):
         categories_masks = torch_stack(categories_masks, dim=1).int()
         return categories_labels, categories_masks
 
-    def _get_marginal_log_likelihood_loss(self, logits, labels, span_mask):
+    def get_marginal_log_likelihood_loss(self, logits, labels, span_mask):
         gold_coref_logits = mask_tensor(
             logits, labels
         )  # [batch_size, num_cats + 1, max_k, max_k]
@@ -336,7 +336,7 @@ class LingMessModel(BertPreTrainedModel):
         loss = loss_per_cat.sum()
         return loss
 
-    def _get_mention_mask(self, mention_logits_or_weights):
+    def get_mention_mask(self, mention_logits_or_weights):
         """
         Returns a tensor of size [batch_size, seq_length, seq_length] where valid spans
         (start <= end < start + max_span_length) are 1 and the rest are 0
@@ -347,7 +347,7 @@ class LingMessModel(BertPreTrainedModel):
         mention_mask = mention_mask.tril(diagonal=self.max_span_length - 1)
         return mention_mask
 
-    def _calc_mention_logits(self, start_mention_reps, end_mention_reps):
+    def calc_mention_logits(self, start_mention_reps, end_mention_reps):
         start_mention_logits = self.mention_start_classifier(
             start_mention_reps
         ).squeeze(-1)  # [batch_size, seq_length]
@@ -367,7 +367,7 @@ class LingMessModel(BertPreTrainedModel):
             + start_mention_logits.unsqueeze(-1)
             + end_mention_logits.unsqueeze(-2)
         )
-        mention_mask = self._get_mention_mask(
+        mention_mask = self.get_mention_mask(
             mention_logits
         )  # [batch_size, seq_length, seq_length]
         mention_logits = mask_tensor(
@@ -378,10 +378,10 @@ class LingMessModel(BertPreTrainedModel):
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (self.num_cats, self.ffnn_size)
         x = x.view(*new_x_shape)
-        _return_value = x.permute(0, 2, 1, 3)
-        return _return_value  # bnkf/bnlg
+        computed_return_value = x.permute(0, 2, 1, 3)
+        return computed_return_value  # bnkf/bnlg
 
-    def _calc_coref_logits(self, start_reps, end_reps):
+    def calc_coref_logits(self, start_reps, end_reps):
         # see discussion on einsum: https://discuss.pytorch.org/t/batch-matrix-multiplication-of-3d-tensors/153644/4
 
         all_starts = self.transpose_for_scores(self.coref_start_all_mlps(start_reps))
@@ -429,10 +429,10 @@ class LingMessModel(BertPreTrainedModel):
             ).unsqueeze(-2)
         )
 
-        _return_value = logits + biases
-        return _return_value
+        computed_return_value = logits + biases
+        return computed_return_value
 
-    def _get_all_labels(self, clusters_labels, categories_masks):
+    def get_all_labels(self, clusters_labels, categories_masks):
         batch_size, max_k, _ = clusters_labels.size()
 
         categories_labels = (
@@ -512,7 +512,7 @@ class LingMessModel(BertPreTrainedModel):
         end_mention_reps = self.end_mention_mlp(sequence_output)
 
         # mention scores
-        mention_logits = self._calc_mention_logits(start_mention_reps, end_mention_reps)
+        mention_logits = self.calc_mention_logits(start_mention_reps, end_mention_reps)
 
         # prune mentions
         (
@@ -521,9 +521,9 @@ class LingMessModel(BertPreTrainedModel):
             span_mask,
             topk_mention_logits,
             topk_1d_indices,
-        ) = self._prune_topk_mentions(mention_logits, attention_mask)
+        ) = self.prune_topk_mentions(mention_logits, attention_mask)
 
-        categories_labels, categories_masks = self._get_categories_labels(
+        categories_labels, categories_masks = self.get_categories_labels(
             tokens, subtoken_map, new_token_map, mention_start_ids, mention_end_ids
         )
 
@@ -538,15 +538,15 @@ class LingMessModel(BertPreTrainedModel):
         )
 
         # antecedent scores by category
-        categories_logits = self._calc_coref_logits(topk_start_reps, topk_end_reps)
+        categories_logits = self.calc_coref_logits(topk_start_reps, topk_end_reps)
 
         final_logits = categories_logits * categories_masks
         final_logits = final_logits.sum(dim=1) + topk_mention_logits
         categories_logits = categories_logits + topk_mention_logits.unsqueeze(1)
 
         # lower logits of padded spans or different category.
-        final_logits = self._mask_antecedent_logits(final_logits, span_mask)
-        categories_logits = self._mask_antecedent_logits(
+        final_logits = self.mask_antecedent_logits(final_logits, span_mask)
+        categories_logits = self.mask_antecedent_logits(
             categories_logits, span_mask, categories_masks
         )
 
@@ -569,15 +569,15 @@ class LingMessModel(BertPreTrainedModel):
             outputs = tuple()
 
         if gold_clusters is not False:
-            clusters_labels = self._get_clusters_labels(
+            clusters_labels = self.get_clusters_labels(
                 mention_start_ids, mention_end_ids, gold_clusters
             )
-            all_labels = self._get_all_labels(clusters_labels, categories_masks)
+            all_labels = self.get_all_labels(clusters_labels, categories_masks)
             all_logits = torch_cat(
                 (categories_logits, final_logits.unsqueeze(1)), dim=1
             )
 
-            loss = self._get_marginal_log_likelihood_loss(
+            loss = self.get_marginal_log_likelihood_loss(
                 all_logits, all_labels, span_mask
             )
             outputs = (

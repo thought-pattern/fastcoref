@@ -15,7 +15,7 @@ from utilities.collate import LeftOversCollator, PadCollator
 logger = logging_getLogger(__name__)
 
 
-def _tokenize(tokenizer, tokens, clusters, speakers):
+def tokenize(tokenizer, tokens, clusters, speakers):
     token_to_new_token_map = []
     new_token_map = []
     new_tokens = []
@@ -32,16 +32,9 @@ def _tokenize(tokenizer, tokens, clusters, speakers):
 
     for cluster in clusters:
         for start, end in cluster:
-            assert (
-                tokens[start : end + 1]
-                == new_tokens[
-                    token_to_new_token_map[start] : token_to_new_token_map[end] + 1
-                ]
-            )
+            assert tokens[start : end + 1] == new_tokens[token_to_new_token_map[start] : token_to_new_token_map[end] + 1]
 
-    encoded_text = tokenizer(
-        new_tokens, add_special_tokens=True, is_split_into_words=True
-    )
+    encoded_text = tokenizer(new_tokens, add_special_tokens=True, is_split_into_words=True)
 
     new_clusters = [
         [
@@ -54,20 +47,20 @@ def _tokenize(tokenizer, tokens, clusters, speakers):
         for cluster in clusters
     ]
 
-    _return_value = {
+    computed_return_value = {
         "tokens": tokens,
         "input_ids": encoded_text.get("input_ids", []),
         "gold_clusters": new_clusters,
         "subtoken_map": encoded_text.word_ids(),
         "new_token_map": new_token_map,
     }
-    return _return_value
+    return computed_return_value
 
 
 def encode(example, tokenizer):
     if "clusters" not in example:
         example["clusters"] = []
-    encoded_example = _tokenize(
+    encoded_example = tokenize(
         tokenizer,
         example.get("tokens", 0),
         example.get("clusters", []),
@@ -76,9 +69,7 @@ def encode(example, tokenizer):
 
     gold_clusters = encoded_example.get("gold_clusters", [])
     encoded_example["num_clusters"] = len(gold_clusters) if gold_clusters else 0
-    encoded_example["max_cluster_size"] = (
-        max(len(c) for c in gold_clusters) if gold_clusters else 0
-    )
+    encoded_example["max_cluster_size"] = max(len(c) for c in gold_clusters) if gold_clusters else 0
     encoded_example["length"] = len(encoded_example.get("input_ids", []))
 
     return encoded_example
@@ -150,7 +141,7 @@ def create_batches(sampler, dataset_files, cache_dir="cache"):
         # huggingface dataset cannot save tensors. so we will save lists and on train loop transform to tensors.
         batches_dict = defaultdict(list)
 
-        for _i, batch in enumerate(tqdm(sampler)):
+        for _, batch in enumerate(tqdm(sampler)):
             for k, v in batch.items():
                 batches_dict.get(k, []).append(v)
 

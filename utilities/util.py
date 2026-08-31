@@ -31,12 +31,10 @@ nlp = False
 
 def output_evaluation_metrics(metrics_dict, prefix):
     loss = metrics_dict.get("loss", [])
-    post_pruning_mention_pr, post_pruning_mentions_r, post_pruning_mention_f1 = (
-        metrics_dict.get("post_pruning", MentionEvaluator()).get_prf()
-    )
-    mention_p, mentions_r, mention_f1 = metrics_dict.get(
-        "mentions", MentionEvaluator()
+    post_pruning_mention_pr, post_pruning_mentions_r, post_pruning_mention_f1 = metrics_dict.get(
+        "post_pruning", MentionEvaluator()
     ).get_prf()
+    mention_p, mentions_r, mention_f1 = metrics_dict.get("mentions", MentionEvaluator()).get_prf()
     p, r, f1 = metrics_dict.get("coref", CorefEvaluator()).get_prf()
     results = {
         "eval_loss": loss,
@@ -124,8 +122,8 @@ def align_to_char_level(
 
 
 def flatten(local_element):
-    _return_value = [item for sublist in local_element for item in sublist]
-    return _return_value
+    computed_return_value = [item for sublist in local_element for item in sublist]
+    return computed_return_value
 
 
 def read_jsonlines(file):
@@ -134,9 +132,7 @@ def read_jsonlines(file):
     return docs
 
 
-def write_prediction_to_jsonlines(
-    args, doc_to_prediction, doc_to_tokens, doc_to_subtoken_map, doc_to_new_word_map
-):
+def write_prediction_to_jsonlines(args, doc_to_prediction, doc_to_tokens, doc_to_subtoken_map, doc_to_new_word_map):
     eval_file = args.dataset_files[args.eval_split]
     if args.output_file is not None:
         output_eval_file = args.output_file
@@ -157,9 +153,7 @@ def write_prediction_to_jsonlines(
             subtoken_map = doc_to_subtoken_map[doc_key]
             new_word_map = doc_to_new_word_map[doc_key]
 
-            new_predicted_clusters = align_clusters(
-                predicted_clusters, subtoken_map, new_word_map
-            )
+            new_predicted_clusters = align_clusters(predicted_clusters, subtoken_map, new_word_map)
             doc["tokens"] = tokens
             doc["clusters"] = new_predicted_clusters
 
@@ -175,9 +169,7 @@ def to_dataframe(file_path, api=False):
         pass
     elif "sentences" in df.columns:
         # this is just for ontonotes. please avoid using 'sentences' and use 'text' or 'tokens'
-        df["tokens"] = df.get("sentences", pd_Series(dtype=object)).apply(
-            lambda x: flatten(x)
-        )
+        df["tokens"] = df.get("sentences", pd_Series(dtype=object)).apply(lambda x: flatten(x))
     elif "text" in df.columns:
         if nlp is False:
             nlp = spacy_load(
@@ -206,23 +198,15 @@ def to_dataframe(file_path, api=False):
         df["tokens_to_start_char"] = docs_tokens_to_start_char
         df["tokens_to_end_char"] = docs_tokens_to_end_char
     else:
-        raise NotImplementedError(
-            "The jsonlines must include tokens/text/sentences attribute"
-        )
+        raise NotImplementedError("The jsonlines must include tokens/text/sentences attribute")
 
     if "speakers" in df.columns:
-        df["speakers"] = df.get("speakers", pd_Series(dtype=object)).apply(
-            lambda x: flatten(x)
-        )
+        df["speakers"] = df.get("speakers", pd_Series(dtype=object)).apply(lambda x: flatten(x))
     else:
-        df["speakers"] = df.get("tokens", pd_Series(dtype=object)).apply(
-            lambda x: [False] * len(x)
-        )
+        df["speakers"] = df.get("tokens", pd_Series(dtype=object)).apply(lambda x: [False] * len(x))
 
     if not api and "doc_key" not in df.columns:
-        raise NotImplementedError(
-            "The jsonlines must include doc_key, you can use uuid.uuid4().hex to generate."
-        )
+        raise NotImplementedError("The jsonlines must include doc_key, you can use uuid.uuid4().hex to generate.")
 
     columns = ["tokens", "speakers"]
     if not api:
@@ -262,10 +246,7 @@ def save_all(model, tokenizer, output_dir):
 
 
 def extract_clusters(gold_clusters):
-    gold_clusters = [
-        tuple(tuple(m) for m in cluster if NULL_ID_FOR_COREF not in m)
-        for cluster in gold_clusters
-    ]
+    gold_clusters = [tuple(tuple(m) for m in cluster if NULL_ID_FOR_COREF not in m) for cluster in gold_clusters]
     gold_clusters = [cluster for cluster in gold_clusters if len(cluster) > 0]
     return gold_clusters
 
@@ -329,9 +310,7 @@ def create_mention_to_antecedent(span_starts, span_ends, coref_logits):
     batch_size, n_spans, _ = coref_logits.shape
 
     max_antecedents = coref_logits.argmax(axis=-1)
-    doc_indices, mention_indices = np_nonzero(
-        max_antecedents < n_spans
-    )  # indices where antecedent is not null.
+    doc_indices, mention_indices = np_nonzero(max_antecedents < n_spans)  # indices where antecedent is not null.
     antecedent_indices = max_antecedents[max_antecedents < n_spans]
     span_indices = np_stack([span_starts, span_ends], axis=-1)
 
@@ -343,17 +322,15 @@ def create_mention_to_antecedent(span_starts, span_ends, coref_logits):
 
 
 def pad_clusters_inside(clusters, max_cluster_size):
-    _return_value = [
-        cluster
-        + [(NULL_ID_FOR_COREF, NULL_ID_FOR_COREF)] * (max_cluster_size - len(cluster))
-        for cluster in clusters
+    computed_return_value = [
+        cluster + [(NULL_ID_FOR_COREF, NULL_ID_FOR_COREF)] * (max_cluster_size - len(cluster)) for cluster in clusters
     ]
-    return _return_value
+    return computed_return_value
 
 
 def pad_clusters_outside(clusters, max_num_clusters):
-    _return_value = clusters + [[]] * (max_num_clusters - len(clusters))
-    return _return_value
+    computed_return_value = clusters + [[]] * (max_num_clusters - len(clusters))
+    return computed_return_value
 
 
 def pad_clusters(clusters, max_num_clusters, max_cluster_size):
@@ -372,10 +349,10 @@ def get_pronoun_id(span):
     if len(span) == 1:
         span = list(span)
         if span[0] in PRONOUNS_GROUPS:
-            _return_value = PRONOUNS_GROUPS.get(span[0], "")
-            return _return_value
-    _return_value = -1
-    return _return_value
+            computed_return_value = PRONOUNS_GROUPS.get(span[0], "")
+            return computed_return_value
+    computed_return_value = -1
+    return computed_return_value
 
 
 def get_category_id(mention, antecedent):
@@ -384,27 +361,27 @@ def get_category_id(mention, antecedent):
 
     if mention_pronoun_id > -1 and antecedent_pronoun_id > -1:
         if mention_pronoun_id == antecedent_pronoun_id:
-            _return_value = CATEGORIES.get("pron-pron-comp", "")
-            return _return_value
+            computed_return_value = CATEGORIES.get("pron-pron-comp", "")
+            return computed_return_value
         else:
-            _return_value = CATEGORIES.get("pron-pron-no-comp", "")
-            return _return_value
+            computed_return_value = CATEGORIES.get("pron-pron-no-comp", "")
+            return computed_return_value
 
     if mention_pronoun_id > -1 or antecedent_pronoun_id > -1:
-        _return_value = CATEGORIES.get("pron-ent", "")
-        return _return_value
+        computed_return_value = CATEGORIES.get("pron-ent", "")
+        return computed_return_value
 
     if mention == antecedent:
-        _return_value = CATEGORIES.get("match", "")
-        return _return_value
+        computed_return_value = CATEGORIES.get("match", "")
+        return computed_return_value
 
     union = mention.union(antecedent)
     if len(union) == max(len(mention), len(antecedent)):
-        _return_value = CATEGORIES.get("contain", "")
-        return _return_value
+        computed_return_value = CATEGORIES.get("contain", "")
+        return computed_return_value
 
-    _return_value = CATEGORIES.get("other", "")
-    return _return_value
+    computed_return_value = CATEGORIES.get("other", "")
+    return computed_return_value
 
 
 def softXEnt(teacher_logits, student_logits, span_mask, T=1):

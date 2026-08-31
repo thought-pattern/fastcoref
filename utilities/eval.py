@@ -29,9 +29,7 @@ class Evaluator:
         # Eval!
         model.eval()
 
-        logger.info(
-            f"***** Running Inference on {self.args.eval_split} split {prefix} *****"
-        )
+        logger.info(f"***** Running Inference on {self.args.eval_split} split {prefix} *****")
         logger.info(f"  Examples number: {len(self.eval_dataloader.dataset)}")
 
         metrics_dict = {
@@ -47,10 +45,8 @@ class Evaluator:
 
         total_time = 0
         evaluation = False
-        with tqdm(
-            desc="Inference", total=len(self.eval_dataloader.dataset)
-        ) as progress_bar:
-            for _idx, batch in enumerate(self.eval_dataloader):
+        with tqdm(desc="Inference", total=len(self.eval_dataloader.dataset)) as progress_bar:
+            for _, batch in enumerate(self.eval_dataloader):
                 doc_keys = batch.get("doc_key", [])
                 tokens = batch.get("tokens", 0)
                 subtoken_map = batch.get("subtoken_map", False)
@@ -60,9 +56,7 @@ class Evaluator:
 
                 start_time = time_time()
                 with torch_no_grad():
-                    outputs = model(
-                        batch, gold_clusters=gold_clusters, return_all_outputs=True
-                    )
+                    outputs = model(batch, gold_clusters=gold_clusters, return_all_outputs=True)
                 end_time = time_time()
                 total_time += end_time - start_time
 
@@ -71,21 +65,15 @@ class Evaluator:
                 if has_gold_clusters:
                     evaluation = True
                     gold_clusters = gold_clusters.cpu().numpy()
-                    loss, span_starts, span_ends, mention_logits, coref_logits = (
-                        outputs_np
-                    )
+                    loss, span_starts, span_ends, mention_logits, coref_logits = outputs_np
                     metrics_dict["loss"] += loss.item()
                 else:
                     span_starts, span_ends, mention_logits, coref_logits = outputs_np
 
-                doc_indices, mention_to_antecedent = create_mention_to_antecedent(
-                    span_starts, span_ends, coref_logits
-                )
+                doc_indices, mention_to_antecedent = create_mention_to_antecedent(span_starts, span_ends, coref_logits)
 
                 for i, doc_key in enumerate(doc_keys):
-                    doc_mention_to_antecedent = mention_to_antecedent[
-                        np_nonzero(doc_indices == i)
-                    ]
+                    doc_mention_to_antecedent = mention_to_antecedent[np_nonzero(doc_indices == i)]
                     predicted_clusters = create_clusters(doc_mention_to_antecedent)
 
                     doc_to_prediction[doc_key] = predicted_clusters
@@ -114,9 +102,7 @@ class Evaluator:
 
         results = {}
         if evaluation:
-            results = output_evaluation_metrics(
-                metrics_dict=metrics_dict, prefix=prefix
-            )
+            results = output_evaluation_metrics(metrics_dict=metrics_dict, prefix=prefix)
         logger.info(f"Total time: {total_time:.6f} seconds")
 
         return results

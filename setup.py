@@ -2,13 +2,8 @@
 """Utilities for setup."""
 
 from pathlib import Path
-from sys import exit as sys_exit
-from sys import version_info as sys_version_info
 
 from setuptools import setup
-
-if sys_version_info < (3, 10):
-    sys_exit("Python < 3.10 is not supported")
 
 this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text()
@@ -25,7 +20,6 @@ setup(
         "fastcoref",
         "fastcoref.coref_models",
         "fastcoref.utilities",
-        "fastcoref.spacy_component",
     ],
     url="https://github.com/shon-otmazgin/fastcoref",
     install_requires=[

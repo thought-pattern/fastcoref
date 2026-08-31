@@ -1,10 +1,9 @@
 # fastcoref (Tapestry Fork)
 
-Fork of [shon-otmazgin/fastcoref](https://github.com/shon-otmazgin/fastcoref) v2.1.6, updated for compatibility with transformers 5.x.
+Fork of [shon-otmazgin/fastcoref](https://github.com/shon-otmazgin/fastcoref) v2.1.6, using the current Transformers 5 runtime.
 
 ## Changes from upstream
 
-- Added `_tied_weights_keys` and `all_tied_weights_keys` class attributes to `FCorefModel` and `LingMessModel` for transformers 5.x compatibility (`mark_tied_weights_as_initialized` expects this attribute during `from_pretrained`)
 - Added `CorefResult.get_resolved_text()` to produce text with pronouns replaced by their canonical antecedents
 
 ## Usage

@@ -27,9 +27,7 @@ def train(
     evaluator,
 ):
     """Train the model"""
-    assert len(student_train_batches) == len(teacher_train_batches), (
-        "student and teacher batches size are different"
-    )
+    assert len(student_train_batches) == len(teacher_train_batches), "student and teacher batches size are different"
     t_total = len(student_train_batches) * args.train_epochs
 
     # Prepare optimizer and schedule (linear warmup and decay)
@@ -37,30 +35,19 @@ def train(
     head_params = ["coref", "mention", "antecedent"]
 
     model_decay = [
-        p
-        for n, p in student.named_parameters()
-        if not any(hp in n for hp in head_params)
-        and not any(nd in n for nd in no_decay)
+        p for n, p in student.named_parameters() if not any(hp in n for hp in head_params) and not any(nd in n for nd in no_decay)
     ]
     model_no_decay = [
-        p
-        for n, p in student.named_parameters()
-        if not any(hp in n for hp in head_params) and any(nd in n for nd in no_decay)
+        p for n, p in student.named_parameters() if not any(hp in n for hp in head_params) and any(nd in n for nd in no_decay)
     ]
     head_decay = [
-        p
-        for n, p in student.named_parameters()
-        if any(hp in n for hp in head_params) and not any(nd in n for nd in no_decay)
+        p for n, p in student.named_parameters() if any(hp in n for hp in head_params) and not any(nd in n for nd in no_decay)
     ]
     head_no_decay = [
-        p
-        for n, p in student.named_parameters()
-        if any(hp in n for hp in head_params) and any(nd in n for nd in no_decay)
+        p for n, p in student.named_parameters() if any(hp in n for hp in head_params) and any(nd in n for nd in no_decay)
     ]
 
-    head_learning_rate = (
-        args.head_learning_rate if args.head_learning_rate else args.learning_rate
-    )
+    head_learning_rate = args.head_learning_rate if args.head_learning_rate else args.learning_rate
     optimizer_grouped_parameters = [
         {
             "params": model_decay,
@@ -81,9 +68,7 @@ def train(
         betas=(args.adam_beta1, args.adam_beta2),
         eps=args.adam_epsilon,
     )
-    scheduler = get_linear_schedule_with_warmup(
-        optimizer, num_warmup_steps=t_total * 0.1, num_training_steps=t_total
-    )
+    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=t_total * 0.1, num_training_steps=t_total)
 
     # using mixed precision
     scaler = torch_cuda.amp.GradScaler()
@@ -106,7 +91,7 @@ def train(
             desc="Iteration",
             total=len(student_train_batches),
         )
-        for _step, (student_batch, teacher_batch) in enumerate(epoch_iterator):
+        for _, (student_batch, teacher_batch) in enumerate(epoch_iterator):
             assert all(
                 [
                     x == y
@@ -118,19 +103,11 @@ def train(
                 ]
             ), "different doc keys in the student-teacher batches"
 
-            teacher_batch["input_ids"] = torch_tensor(
-                teacher_batch.get("input_ids", []), device=args.device
-            )
-            teacher_batch["attention_mask"] = torch_tensor(
-                teacher_batch.get("attention_mask", False), device=args.device
-            )
+            teacher_batch["input_ids"] = torch_tensor(teacher_batch.get("input_ids", []), device=args.device)
+            teacher_batch["attention_mask"] = torch_tensor(teacher_batch.get("attention_mask", False), device=args.device)
 
-            student_batch["input_ids"] = torch_tensor(
-                student_batch.get("input_ids", []), device=args.device
-            )
-            student_batch["attention_mask"] = torch_tensor(
-                student_batch.get("attention_mask", False), device=args.device
-            )
+            student_batch["input_ids"] = torch_tensor(student_batch.get("input_ids", []), device=args.device)
+            student_batch["attention_mask"] = torch_tensor(student_batch.get("attention_mask", False), device=args.device)
             if "leftovers" in student_batch:
                 student_batch.get("leftovers", {})["input_ids"] = torch_tensor(
                     student_batch.get("leftovers", {}).get("input_ids", []),
@@ -196,5 +173,5 @@ def train(
     with open(os_path.join(args.output_dir, "best_f1.json"), "w") as f:
         json_dump({"best_f1": best_f1, "best_global_step": best_global_step}, f)
 
-    _return_value = global_step, tr_loss / global_step
-    return _return_value
+    computed_return_value = global_step, tr_loss / global_step
+    return computed_return_value

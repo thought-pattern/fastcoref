@@ -19,8 +19,8 @@ logger = logging_getLogger(__name__)
 
 
 def flatten(local_element):
-    _return_value = [item for sublist in local_element for item in sublist]
-    return _return_value
+    computed_return_value = [item for sublist in local_element for item in sublist]
+    return computed_return_value
 
 
 def save_all(model, tokenizer, output_dir):
@@ -36,17 +36,15 @@ def save_all(model, tokenizer, output_dir):
 
 
 def pad_clusters_inside(clusters, max_cluster_size):
-    _return_value = [
-        cluster
-        + [(NULL_ID_FOR_COREF, NULL_ID_FOR_COREF)] * (max_cluster_size - len(cluster))
-        for cluster in clusters
+    computed_return_value = [
+        cluster + [(NULL_ID_FOR_COREF, NULL_ID_FOR_COREF)] * (max_cluster_size - len(cluster)) for cluster in clusters
     ]
-    return _return_value
+    return computed_return_value
 
 
 def pad_clusters_outside(clusters, max_num_clusters):
-    _return_value = clusters + [[]] * (max_num_clusters - len(clusters))
-    return _return_value
+    computed_return_value = clusters + [[]] * (max_num_clusters - len(clusters))
+    return computed_return_value
 
 
 def pad_clusters(clusters, max_num_clusters, max_cluster_size):
@@ -57,12 +55,10 @@ def pad_clusters(clusters, max_num_clusters, max_cluster_size):
 
 def output_evaluation_metrics(metrics_dict, prefix):
     loss = metrics_dict.get("loss", [])
-    post_pruning_mention_pr, post_pruning_mentions_r, post_pruning_mention_f1 = (
-        metrics_dict.get("post_pruning", MentionEvaluator()).get_prf()
-    )
-    mention_p, mentions_r, mention_f1 = metrics_dict.get(
-        "mentions", MentionEvaluator()
+    post_pruning_mention_pr, post_pruning_mentions_r, post_pruning_mention_f1 = metrics_dict.get(
+        "post_pruning", MentionEvaluator()
     ).get_prf()
+    mention_p, mentions_r, mention_f1 = metrics_dict.get("mentions", MentionEvaluator()).get_prf()
     p, r, f1 = metrics_dict.get("coref", CorefEvaluator()).get_prf()
     results = {
         "eval_loss": loss,
@@ -114,8 +110,7 @@ def encode(batch, tokenizer, nlp):
     else:
         tokenized_texts = batch
         tokenized_texts["offset_mapping"] = [
-            (list(zip(range(len(tokens)), range(1, 1 + len(tokens)), strict=False)))
-            for tokens in tokenized_texts.get("tokens", 0)
+            (list(zip(range(len(tokens)), range(1, 1 + len(tokens)), strict=False))) for tokens in tokenized_texts.get("tokens", 0)
         ]
     encoded_batch = tokenizer(
         tokenized_texts.get("tokens", 0),
@@ -124,20 +119,18 @@ def encode(batch, tokenizer, nlp):
         return_length=True,
         return_attention_mask=False,
     )
-    _return_value = {
+    computed_return_value = {
         "tokens": tokenized_texts.get("tokens", 0),
         "input_ids": encoded_batch.get("input_ids", []),
         "length": encoded_batch.get("length", 0),
         # bpe token -> spacy tokens
         "subtoken_map": [enc.word_ids for enc in encoded_batch.encodings],
         # this is a can use for speaker info TODO: better name!
-        "new_token_map": [
-            list(range(len(tokens))) for tokens in tokenized_texts.get("tokens", 0)
-        ],
+        "new_token_map": [list(range(len(tokens))) for tokens in tokenized_texts.get("tokens", 0)],
         # spacy tokens -> text char
         "offset_mapping": tokenized_texts.get("offset_mapping", {}),
     }
-    return _return_value
+    return computed_return_value
 
 
 def tokenize_with_spacy(texts, nlp):
@@ -155,11 +148,7 @@ def tokenize_with_spacy(texts, nlp):
     all_pipe_names = nlp.pipe_names
     tokenizer_pipe_names = ["tok2vec"]
 
-    disabled_pipe_names = [
-        pipe_name
-        for pipe_name in all_pipe_names
-        if pipe_name not in tokenizer_pipe_names
-    ]
+    disabled_pipe_names = [pipe_name for pipe_name in all_pipe_names if pipe_name not in tokenizer_pipe_names]
     docs = nlp.pipe(texts, disable=disabled_pipe_names)
     for doc in docs:
         tokens, offset_mapping = handle_doc(doc)
@@ -169,9 +158,7 @@ def tokenize_with_spacy(texts, nlp):
     return tokenized_texts
 
 
-def align_to_char_level(
-    span_starts, span_ends, token_to_char, subtoken_map=False, new_token_map=False
-):
+def align_to_char_level(span_starts, span_ends, token_to_char, subtoken_map=False, new_token_map=False):
     if new_token_map is None:
         new_token_map = False
     if subtoken_map is None:
@@ -211,10 +198,7 @@ def set_seed(args):
 
 
 def extract_clusters(gold_clusters):
-    gold_clusters = [
-        tuple(tuple(m) for m in cluster if NULL_ID_FOR_COREF not in m)
-        for cluster in gold_clusters
-    ]
+    gold_clusters = [tuple(tuple(m) for m in cluster if NULL_ID_FOR_COREF not in m) for cluster in gold_clusters]
     gold_clusters = [cluster for cluster in gold_clusters if len(cluster) > 0]
     return gold_clusters
 
@@ -257,9 +241,7 @@ def create_mention_to_antecedent(span_starts, span_ends, coref_logits):
     batch_size, n_spans, _ = coref_logits.shape
 
     max_antecedents = coref_logits.argmax(axis=-1)
-    doc_indices, mention_indices = np_nonzero(
-        max_antecedents < n_spans
-    )  # indices where antecedent is not null.
+    doc_indices, mention_indices = np_nonzero(max_antecedents < n_spans)  # indices where antecedent is not null.
     antecedent_indices = max_antecedents[max_antecedents < n_spans]
     span_indices = np_stack([span_starts, span_ends], axis=-1)
 
@@ -280,10 +262,10 @@ def get_pronoun_id(span):
     if len(span) == 1:
         span = list(span)
         if span[0] in PRONOUNS_GROUPS:
-            _return_value = PRONOUNS_GROUPS.get(span[0], "")
-            return _return_value
-    _return_value = -1
-    return _return_value
+            computed_return_value = PRONOUNS_GROUPS.get(span[0], "")
+            return computed_return_value
+    computed_return_value = -1
+    return computed_return_value
 
 
 def get_category_id(mention, antecedent):
@@ -292,24 +274,24 @@ def get_category_id(mention, antecedent):
 
     if mention_pronoun_id > -1 and antecedent_pronoun_id > -1:
         if mention_pronoun_id == antecedent_pronoun_id:
-            _return_value = CATEGORIES.get("pron-pron-comp", "")
-            return _return_value
+            computed_return_value = CATEGORIES.get("pron-pron-comp", "")
+            return computed_return_value
         else:
-            _return_value = CATEGORIES.get("pron-pron-no-comp", "")
-            return _return_value
+            computed_return_value = CATEGORIES.get("pron-pron-no-comp", "")
+            return computed_return_value
 
     if mention_pronoun_id > -1 or antecedent_pronoun_id > -1:
-        _return_value = CATEGORIES.get("pron-ent", "")
-        return _return_value
+        computed_return_value = CATEGORIES.get("pron-ent", "")
+        return computed_return_value
 
     if mention == antecedent:
-        _return_value = CATEGORIES.get("match", "")
-        return _return_value
+        computed_return_value = CATEGORIES.get("match", "")
+        return computed_return_value
 
     union = mention.union(antecedent)
     if len(union) == max(len(mention), len(antecedent)):
-        _return_value = CATEGORIES.get("contain", "")
-        return _return_value
+        computed_return_value = CATEGORIES.get("contain", "")
+        return computed_return_value
 
-    _return_value = CATEGORIES.get("other", "")
-    return _return_value
+    computed_return_value = CATEGORIES.get("other", "")
+    return computed_return_value

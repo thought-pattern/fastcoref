@@ -78,17 +78,17 @@ class FastMention(BertPreTrainedModel):
 
     def num_parameters(self) -> tuple:
         def head_filter(x):
-            _return_value = x[1].requires_grad and any(
+            computed_return_value = x[1].requires_grad and any(
                 hp in x[0] for hp in ["coref", "mention", "antecedent"]
             )
-            return _return_value
+            return computed_return_value
 
         head_params = filter(head_filter, self.named_parameters())
         head_params = sum(p.numel() for n, p in head_params)
-        _return_value = super().num_parameters() - head_params, head_params
-        return _return_value
+        computed_return_value = super().num_parameters() - head_params, head_params
+        return computed_return_value
 
-    def _get_span_mask(self, batch_size, k, max_k):
+    def get_span_mask(self, batch_size, k, max_k):
         """
         :param batch_size: int
         :param k: tensor of size [batch_size], with the required k for each example
@@ -98,10 +98,10 @@ class FastMention(BertPreTrainedModel):
         size = (batch_size, max_k)
         idx = torch_arange(max_k, device=self.device).unsqueeze(0).expand(size)
         len_expanded = k.unsqueeze(1).expand(size)
-        _return_value = (idx < len_expanded).int()
-        return _return_value
+        computed_return_value = (idx < len_expanded).int()
+        return computed_return_value
 
-    def _prune_topk_mentions(self, mention_logits, attention_mask):
+    def prune_topk_mentions(self, mention_logits, attention_mask):
         """
         :param mention_logits: Shape [batch_size, seq_length, seq_length]
         :param attention_mask: [batch_size, seq_length]
@@ -120,7 +120,7 @@ class FastMention(BertPreTrainedModel):
             mention_logits.view(batch_size, -1), dim=-1, k=max_k
         )  # [batch_size, max_k]
 
-        span_mask = self._get_span_mask(batch_size, k, max_k)  # [batch_size, max_k]
+        span_mask = self.get_span_mask(batch_size, k, max_k)  # [batch_size, max_k]
         # drop the invalid indices and set them to the last index
         topk_1d_indices = (topk_1d_indices * span_mask) + (1 - span_mask) * (
             (seq_length**2) - 1
@@ -156,7 +156,7 @@ class FastMention(BertPreTrainedModel):
             topk_mention_logits,
         )
 
-    def _get_mention_labels(self, mention_logits, all_clusters):
+    def get_mention_labels(self, mention_logits, all_clusters):
         batch_size, seq_len, _ = mention_logits.size()
         new_cluster_labels = torch_zeros((batch_size, seq_len, seq_len), device="cpu")
         all_clusters_cpu = all_clusters.cpu().numpy()
@@ -169,12 +169,12 @@ class FastMention(BertPreTrainedModel):
         new_cluster_labels = new_cluster_labels.to(self.device)
         return new_cluster_labels
 
-    def _get_binary_cross_entropy_loss(self, mention_logits, mention_labels):
+    def get_binary_cross_entropy_loss(self, mention_logits, mention_labels):
         criterion = torch_nn.BCEWithLogitsLoss()
         loss = criterion(mention_logits, mention_labels)
         return loss
 
-    def _get_mention_mask(self, mention_logits_or_weights):
+    def get_mention_mask(self, mention_logits_or_weights):
         """
         Returns a tensor of size [batch_size, seq_length, seq_length] where valid spans
         (start <= end < start + max_span_length) are 1 and the rest are 0
@@ -185,7 +185,7 @@ class FastMention(BertPreTrainedModel):
         mention_mask = mention_mask.tril(diagonal=self.max_span_length - 1)
         return mention_mask
 
-    def _calc_mention_logits(self, start_mention_reps, end_mention_reps):
+    def calc_mention_logits(self, start_mention_reps, end_mention_reps):
         start_mention_logits = self.mention_start_classifier(
             start_mention_reps
         ).squeeze(-1)  # [batch_size, seq_length]
@@ -205,7 +205,7 @@ class FastMention(BertPreTrainedModel):
             + start_mention_logits.unsqueeze(-1)
             + end_mention_logits.unsqueeze(-2)
         )
-        mention_mask = self._get_mention_mask(
+        mention_mask = self.get_mention_mask(
             mention_logits
         )  # [batch_size, seq_length, seq_length]
         mention_logits = mask_tensor(
@@ -260,11 +260,11 @@ class FastMention(BertPreTrainedModel):
         )
 
         # mention scores
-        mention_logits = self._calc_mention_logits(start_mention_reps, end_mention_reps)
+        mention_logits = self.calc_mention_logits(start_mention_reps, end_mention_reps)
 
         # prune mentions
         mention_start_ids, mention_end_ids, span_mask, topk_mention_logits = (
-            self._prune_topk_mentions(mention_logits, attention_mask)
+            self.prune_topk_mentions(mention_logits, attention_mask)
         )
 
         if return_all_outputs:
@@ -273,8 +273,8 @@ class FastMention(BertPreTrainedModel):
             outputs = tuple()
 
         if gold_clusters is not False:
-            mention_labels = self._get_mention_labels(mention_logits, gold_clusters)
-            loss = self._get_binary_cross_entropy_loss(mention_logits, mention_labels)
+            mention_labels = self.get_mention_labels(mention_logits, gold_clusters)
+            loss = self.get_binary_cross_entropy_loss(mention_logits, mention_labels)
             outputs = (loss,) + outputs
 
         return outputs

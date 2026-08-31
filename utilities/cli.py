@@ -53,9 +53,7 @@ def parse_args():
         help="Prediction output file path. output will be in jsonlines format.",
     )
 
-    parser.add_argument(
-        "--do_train", action="store_true", help="Whether to run training."
-    )
+    parser.add_argument("--do_train", action="store_true", help="Whether to run training.")
     parser.add_argument("--eval_split", type=str, required=True)
 
     parser.add_argument(
@@ -71,18 +69,10 @@ def parse_args():
         help="The initial learning rate for Adam.",
     )
     parser.add_argument("--dropout_prob", default=0.3, type=float)
-    parser.add_argument(
-        "--weight_decay", default=0.01, type=float, help="Weight deay if we apply some."
-    )
-    parser.add_argument(
-        "--adam_beta1", default=0.9, type=float, help="Epsilon for Adam optimizer."
-    )
-    parser.add_argument(
-        "--adam_beta2", default=0.98, type=float, help="Epsilon for Adam optimizer."
-    )
-    parser.add_argument(
-        "--adam_epsilon", default=1e-6, type=float, help="Epsilon for Adam optimizer."
-    )
+    parser.add_argument("--weight_decay", default=0.01, type=float, help="Weight deay if we apply some.")
+    parser.add_argument("--adam_beta1", default=0.9, type=float, help="Epsilon for Adam optimizer.")
+    parser.add_argument("--adam_beta2", default=0.98, type=float, help="Epsilon for Adam optimizer.")
+    parser.add_argument("--adam_epsilon", default=1e-6, type=float, help="Epsilon for Adam optimizer.")
     parser.add_argument(
         "--train_epochs",
         default=3.0,
@@ -91,18 +81,12 @@ def parse_args():
     )
     parser.add_argument("--ffnn_size", type=int, default=1024)
 
-    parser.add_argument(
-        "--logging_steps", type=int, default=500, help="Log every X updates steps."
-    )
-    parser.add_argument(
-        "--eval_steps", type=int, default=500, help="Eval every X updates steps."
-    )
+    parser.add_argument("--logging_steps", type=int, default=500, help="Log every X updates steps.")
+    parser.add_argument("--eval_steps", type=int, default=500, help="Eval every X updates steps.")
 
     parser.add_argument("--device", type=str, default="cpu")
 
-    parser.add_argument(
-        "--seed", type=int, default=42, help="random seed for initialization"
-    )
+    parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
 
     parser.add_argument("--max_span_length", type=int, default=30)
     parser.add_argument("--top_lambda", type=float, default=0.4)

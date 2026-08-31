@@ -21,24 +21,18 @@ class Evaluator:
         # Eval!
         model.eval()
 
-        logger.info(
-            f"***** Running Inference on {self.args.eval_split} split {prefix} *****"
-        )
+        logger.info(f"***** Running Inference on {self.args.eval_split} split {prefix} *****")
         logger.info(f"  Examples number: {len(self.eval_dataloader.dataset)}")
 
         metrics_dict = {"loss": 0.0, "post_pruning": MentionEvaluator()}
 
-        with tqdm(
-            desc="Inference", total=len(self.eval_dataloader.dataset)
-        ) as progress_bar:
-            for _idx, batch in enumerate(self.eval_dataloader):
+        with tqdm(desc="Inference", total=len(self.eval_dataloader.dataset)) as progress_bar:
+            for _, batch in enumerate(self.eval_dataloader):
                 doc_keys = batch.get("doc_key", [])
                 gold_clusters = batch.get("gold_clusters", [])
 
                 with torch_no_grad():
-                    outputs = model(
-                        batch, gold_clusters=gold_clusters, return_all_outputs=True
-                    )
+                    outputs = model(batch, gold_clusters=gold_clusters, return_all_outputs=True)
 
                 outputs_np = tuple(tensor.cpu().numpy() for tensor in outputs)
 
@@ -46,25 +40,19 @@ class Evaluator:
                 loss, span_starts, span_ends, mention_logits = outputs_np
                 metrics_dict["loss"] += loss.item()
 
-                for i, _doc_key in enumerate(doc_keys):
+                for i, _ in enumerate(doc_keys):
                     gold_clusters_i = extract_clusters(gold_clusters[i])
-                    mention_to_gold_clusters = extract_mentions_to_clusters(
-                        gold_clusters_i
-                    )
+                    mention_to_gold_clusters = extract_mentions_to_clusters(gold_clusters_i)
                     gold_mentions = set(mention_to_gold_clusters.keys())
 
-                    candidate_mentions = list(
-                        zip(span_starts[i], span_ends[i], strict=False)
-                    )
-                    metrics_dict.get("post_pruning", {}).update(
-                        candidate_mentions, gold_mentions
-                    )
+                    candidate_mentions = list(zip(span_starts[i], span_ends[i], strict=False))
+                    metrics_dict.get("post_pruning", {}).update(candidate_mentions, gold_mentions)
 
                 progress_bar.update(n=len(doc_keys))
 
-        post_pruning_mention_pr, post_pruning_mentions_r, post_pruning_mention_f1 = (
-            metrics_dict.get("post_pruning", MentionEvaluator()).get_prf()
-        )
+        post_pruning_mention_pr, post_pruning_mentions_r, post_pruning_mention_f1 = metrics_dict.get(
+            "post_pruning", MentionEvaluator()
+        ).get_prf()
         results = {
             "eval_loss": metrics_dict.get("loss", []),
             "precision": post_pruning_mention_pr,

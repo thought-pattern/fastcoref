@@ -31,24 +31,17 @@ def add_speaker_information(tokens, speakers):
     return new_tokens, token_to_new_token_map, new_token_to_token_map
 
 
-def _tokenize(tokenizer, tokens, clusters, speakers):
+def tokenize(tokenizer, tokens, clusters, speakers):
     new_tokens, token_to_new_token_map, new_token_to_token_map = (
         tokens,
         list(range(len(tokens))),
         list(range(len(tokens))),
     )
     if speakers:
-        new_tokens, token_to_new_token_map, new_token_to_token_map = (
-            add_speaker_information(tokens, speakers)
-        )
+        new_tokens, token_to_new_token_map, new_token_to_token_map = add_speaker_information(tokens, speakers)
         for cluster in clusters:
             for start, end in cluster:
-                assert (
-                    tokens[start : end + 1]
-                    == new_tokens[
-                        token_to_new_token_map[start] : token_to_new_token_map[end] + 1
-                    ]
-                )
+                assert tokens[start : end + 1] == new_tokens[token_to_new_token_map[start] : token_to_new_token_map[end] + 1]
 
     encoded_text = tokenizer(
         new_tokens,
@@ -71,7 +64,7 @@ def _tokenize(tokenizer, tokens, clusters, speakers):
         for cluster in clusters
     ]
 
-    _return_value = {
+    computed_return_value = {
         "tokens": tokens,
         "input_ids": encoded_text.get("input_ids", []),
         "length": encoded_text.get("length", [])[0],
@@ -81,7 +74,7 @@ def _tokenize(tokenizer, tokens, clusters, speakers):
         # tokens + speakers to bpe
         "subtoken_map": encoded_text.word_ids(),
     }
-    return _return_value
+    return computed_return_value
 
 
 # TODO: better to do it in batches
@@ -116,7 +109,7 @@ def encode(example, tokenizer, nlp):
     else:
         raise ValueError(f"Example is empty: {example}")
 
-    encoded_example = _tokenize(
+    encoded_example = tokenize(
         tokenizer,
         example.get("tokens", []),
         example.get("clusters", []),
@@ -125,9 +118,7 @@ def encode(example, tokenizer, nlp):
 
     gold_clusters = encoded_example.get("gold_clusters", [])
     encoded_example["num_clusters"] = len(gold_clusters) if gold_clusters else 0
-    encoded_example["max_cluster_size"] = (
-        max(len(c) for c in gold_clusters) if gold_clusters else 0
-    )
+    encoded_example["max_cluster_size"] = max(len(c) for c in gold_clusters) if gold_clusters else 0
 
     return encoded_example
 
@@ -138,9 +129,7 @@ def create(file, tokenizer, nlp):
             for i, line in enumerate(f):
                 doc = json_loads(line)
                 if "text" not in doc and "tokens" not in doc and "sentences" not in doc:
-                    raise ValueError(
-                        'The jsonlines should contains at lt least "text", "sentences" or "tokens" field'
-                    )
+                    raise ValueError('The jsonlines should contains at lt least "text", "sentences" or "tokens" field')
 
                 minimum_doc = {}
                 if "doc_key" not in doc:
@@ -182,9 +171,7 @@ def create(file, tokenizer, nlp):
         }
     )
 
-    dataset = Dataset.from_generator(
-        read_jsonlines, features=features, gen_kwargs={"file": file}
-    )
+    dataset = Dataset.from_generator(read_jsonlines, features=features, gen_kwargs={"file": file})
     dataset = dataset.map(
         encode,
         batched=False,
@@ -200,7 +187,7 @@ def create_batches(sampler, shuffle=True, cache_dir="cache"):
     # huggingface dataset cannot save tensors. so we will save lists and on train loop transform to tensors.
     batches_dict = defaultdict(list)
 
-    for _i, batch in enumerate(tqdm(sampler, desc="Creating batches for training")):
+    for _, batch in enumerate(tqdm(sampler, desc="Creating batches for training")):
         for k, v in batch.items():
             batches_dict.get(k, []).append(v)
 

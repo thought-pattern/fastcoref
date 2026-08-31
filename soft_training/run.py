@@ -45,18 +45,14 @@ def get_model(model_name_or_path, coref_class, args):
     )
 
     if model.base_model_prefix not in SUPPORTED_MODELS:
-        raise NotImplementedError(
-            f"Model not supporting {args.model_type}, choose one of {SUPPORTED_MODELS}"
-        )
+        raise NotImplementedError(f"Model not supporting {args.model_type}, choose one of {SUPPORTED_MODELS}")
 
     model.to(args.device)
     for key, val in loading_info.items():
         logger.info(f"{key}: {val}")
 
     t_params, h_params = [p / 1000000 for p in model.num_parameters()]
-    logger.info(
-        f"Parameters: {t_params + h_params:.1f}M, Transformer: {t_params:.1f}M, Head: {h_params:.1f}M"
-    )
+    logger.info(f"Parameters: {t_params + h_params:.1f}M, Transformer: {t_params:.1f}M, Head: {h_params:.1f}M")
 
     return model
 
@@ -71,13 +67,9 @@ def main():
         if os_path.exists(args.output_dir):
             if args.overwrite_output_dir:
                 shutil_rmtree(args.output_dir)
-                logger.info(
-                    f"--overwrite_output_dir used. directory {args.output_dir} deleted!"
-                )
+                logger.info(f"--overwrite_output_dir used. directory {args.output_dir} deleted!")
             else:
-                raise ValueError(
-                    f"Output directory ({args.output_dir}) already exists. Use --overwrite_output_dir to overcome."
-                )
+                raise ValueError(f"Output directory ({args.output_dir}) already exists. Use --overwrite_output_dir to overcome.")
         os_mkdir(args.output_dir)
     else:
         if args.do_train:
@@ -117,9 +109,7 @@ def main():
     )
     args.dataset_files = dataset_files
 
-    student_collator = LeftOversCollator(
-        tokenizer=tokenizer, device=args.device, max_segment_len=args.max_segment_len
-    )
+    student_collator = LeftOversCollator(tokenizer=tokenizer, device=args.device, max_segment_len=args.max_segment_len)
     eval_dataloader = DynamicBatchSampler(
         dataset[args.eval_split],
         collator=student_collator,

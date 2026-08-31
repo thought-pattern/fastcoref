@@ -82,17 +82,17 @@ class FCorefModel(BertPreTrainedModel):
 
     def num_parameters(self) -> tuple:
         def head_filter(x):
-            _return_value = x[1].requires_grad and any(
+            computed_return_value = x[1].requires_grad and any(
                 hp in x[0] for hp in ["coref", "mention", "antecedent"]
             )
-            return _return_value
+            return computed_return_value
 
         head_params = filter(head_filter, self.named_parameters())
         head_params = sum(p.numel() for n, p in head_params)
-        _return_value = super().num_parameters() - head_params, head_params
-        return _return_value
+        computed_return_value = super().num_parameters() - head_params, head_params
+        return computed_return_value
 
-    def _get_span_mask(self, batch_size, k, max_k):
+    def get_span_mask(self, batch_size, k, max_k):
         """
         :param batch_size: int
         :param k: tensor of size [batch_size], with the required k for each example
@@ -102,10 +102,10 @@ class FCorefModel(BertPreTrainedModel):
         size = (batch_size, max_k)
         idx = torch_arange(max_k, device=self.device).unsqueeze(0).expand(size)
         len_expanded = k.unsqueeze(1).expand(size)
-        _return_value = (idx < len_expanded).int()
-        return _return_value
+        computed_return_value = (idx < len_expanded).int()
+        return computed_return_value
 
-    def _prune_topk_mentions(self, mention_logits, attention_mask, topk_1d_indices):
+    def prune_topk_mentions(self, mention_logits, attention_mask, topk_1d_indices):
         """
         :param mention_logits: Shape [batch_size, seq_length, seq_length]
         :param attention_mask: [batch_size, seq_length]
@@ -120,12 +120,12 @@ class FCorefModel(BertPreTrainedModel):
             torch_max(k)
         )  # This is the k for the largest input in the batch, we will need to pad
 
-        if topk_1d_indices is None:
+        if topk_1d_indices is False:
             _, topk_1d_indices = torch_topk(
                 mention_logits.view(batch_size, -1), dim=-1, k=max_k
             )  # [batch_size, max_k]
 
-        span_mask = self._get_span_mask(batch_size, k, max_k)  # [batch_size, max_k]
+        span_mask = self.get_span_mask(batch_size, k, max_k)  # [batch_size, max_k]
         # drop the invalid indices and set them to the last index
         topk_1d_indices = (topk_1d_indices * span_mask) + (1 - span_mask) * (
             (seq_length**2) - 1
@@ -161,7 +161,7 @@ class FCorefModel(BertPreTrainedModel):
             topk_mention_logits,
         )
 
-    def _mask_antecedent_logits(self, antecedent_logits, span_mask):
+    def mask_antecedent_logits(self, antecedent_logits, span_mask):
         # We now build the matrix for each pair of spans (i,j) - whether j is a candidate for being antecedent of i?
         antecedents_mask = torch_ones_like(antecedent_logits, dtype=self.dtype).tril(
             diagonal=-1
@@ -172,7 +172,7 @@ class FCorefModel(BertPreTrainedModel):
         antecedent_logits = mask_tensor(antecedent_logits, antecedents_mask)
         return antecedent_logits
 
-    def _get_cluster_labels_after_pruning(self, span_starts, span_ends, all_clusters):
+    def get_cluster_labels_after_pruning(self, span_starts, span_ends, all_clusters):
         """
         :param span_starts: [batch_size, max_k]
         :param span_ends: [batch_size, max_k]
@@ -206,7 +206,7 @@ class FCorefModel(BertPreTrainedModel):
         new_cluster_labels[:, :, -1] = no_antecedents
         return new_cluster_labels
 
-    def _get_marginal_log_likelihood_loss(
+    def get_marginal_log_likelihood_loss(
         self, coref_logits, cluster_labels_after_pruning, span_mask
     ):
         """
@@ -232,7 +232,7 @@ class FCorefModel(BertPreTrainedModel):
         loss = per_example_loss.mean()
         return loss
 
-    def _get_mention_mask(self, mention_logits_or_weights):
+    def get_mention_mask(self, mention_logits_or_weights):
         """
         Returns a tensor of size [batch_size, seq_length, seq_length] where valid spans
         (start <= end < start + max_span_length) are 1 and the rest are 0
@@ -243,7 +243,7 @@ class FCorefModel(BertPreTrainedModel):
         mention_mask = mention_mask.tril(diagonal=self.max_span_length - 1)
         return mention_mask
 
-    def _calc_mention_logits(self, start_mention_reps, end_mention_reps):
+    def calc_mention_logits(self, start_mention_reps, end_mention_reps):
         start_mention_logits = self.mention_start_classifier(
             start_mention_reps
         ).squeeze(-1)  # [batch_size, seq_length]
@@ -263,7 +263,7 @@ class FCorefModel(BertPreTrainedModel):
             + start_mention_logits.unsqueeze(-1)
             + end_mention_logits.unsqueeze(-2)
         )
-        mention_mask = self._get_mention_mask(
+        mention_mask = self.get_mention_mask(
             mention_logits
         )  # [batch_size, seq_length, seq_length]
         mention_logits = mask_tensor(
@@ -271,7 +271,7 @@ class FCorefModel(BertPreTrainedModel):
         )  # [batch_size, seq_length, seq_length]
         return mention_logits
 
-    def _calc_coref_logits(self, top_k_start_coref_reps, top_k_end_coref_reps):
+    def calc_coref_logits(self, top_k_start_coref_reps, top_k_end_coref_reps):
         # s2s
         temp = self.antecedent_s2s_classifier(
             top_k_start_coref_reps
@@ -367,11 +367,11 @@ class FCorefModel(BertPreTrainedModel):
         end_coref_reps = self.end_coref_mlp(sequence_output)
 
         # mention scores
-        mention_logits = self._calc_mention_logits(start_mention_reps, end_mention_reps)
+        mention_logits = self.calc_mention_logits(start_mention_reps, end_mention_reps)
 
         # prune mentions
         mention_start_ids, mention_end_ids, span_mask, topk_mention_logits = (
-            self._prune_topk_mentions(mention_logits, attention_mask, topk_1d_indices)
+            self.prune_topk_mentions(mention_logits, attention_mask, topk_1d_indices)
         )
 
         batch_size, _, dim = start_coref_reps.size()
@@ -386,12 +386,12 @@ class FCorefModel(BertPreTrainedModel):
         topk_end_coref_reps = torch_gather(
             end_coref_reps, dim=1, index=mention_end_ids.unsqueeze(-1).expand(size)
         )
-        coref_logits = self._calc_coref_logits(
+        coref_logits = self.calc_coref_logits(
             topk_start_coref_reps, topk_end_coref_reps
         )
 
         final_logits = topk_mention_logits + coref_logits
-        final_logits = self._mask_antecedent_logits(final_logits, span_mask)
+        final_logits = self.mask_antecedent_logits(final_logits, span_mask)
         # adding zero logits for null span
         final_logits = torch_cat(
             (final_logits, torch_zeros((batch_size, max_k, 1), device=self.device)),
@@ -407,10 +407,10 @@ class FCorefModel(BertPreTrainedModel):
             outputs = (span_mask,) + outputs
 
         if gold_clusters is not False:
-            labels_after_pruning = self._get_cluster_labels_after_pruning(
+            labels_after_pruning = self.get_cluster_labels_after_pruning(
                 mention_start_ids, mention_end_ids, gold_clusters
             )
-            loss = self._get_marginal_log_likelihood_loss(
+            loss = self.get_marginal_log_likelihood_loss(
                 final_logits, labels_after_pruning, span_mask
             )
             outputs = (loss,) + outputs
