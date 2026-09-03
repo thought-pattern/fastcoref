@@ -188,17 +188,16 @@ class LingMessModel(BertPreTrainedModel):
             topk_1d_indices,
         )
 
-    def mask_antecedent_logits(self, antecedent_logits, span_mask, categories_masks=False):
-        if categories_masks is None:
-            categories_masks = False
+    def mask_antecedent_logits(self, antecedent_logits, span_mask):
         antecedents_mask = torch_ones_like(antecedent_logits, dtype=self.dtype).tril(diagonal=-1)
+        mask = antecedents_mask * span_mask.unsqueeze(-1)
+        antecedent_logits = mask_tensor(antecedent_logits, mask)
+        return antecedent_logits
 
-        if categories_masks is not False:
-            mask = antecedents_mask * span_mask.unsqueeze(1).unsqueeze(-1)
-            mask *= categories_masks
-        else:
-            mask = antecedents_mask * span_mask.unsqueeze(-1)
-
+    def mask_category_antecedent_logits(self, antecedent_logits, span_mask, categories_masks):
+        antecedents_mask = torch_ones_like(antecedent_logits, dtype=self.dtype).tril(diagonal=-1)
+        mask = antecedents_mask * span_mask.unsqueeze(1).unsqueeze(-1)
+        mask *= categories_masks
         antecedent_logits = mask_tensor(antecedent_logits, mask)
         return antecedent_logits
 
@@ -441,7 +440,11 @@ class LingMessModel(BertPreTrainedModel):
 
         # lower logits of padded spans or different category.
         final_logits = self.mask_antecedent_logits(final_logits, span_mask)
-        categories_logits = self.mask_antecedent_logits(categories_logits, span_mask, categories_masks)
+        categories_logits = self.mask_category_antecedent_logits(
+            categories_logits,
+            span_mask,
+            categories_masks,
+        )
 
         # adding zero logits for null span
         final_logits = torch_cat(

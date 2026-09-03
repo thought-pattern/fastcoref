@@ -1,17 +1,10 @@
-# read the contents of your README file
 """Utilities for setup."""
-
-from pathlib import Path
 
 from setuptools import setup
 
-this_directory = Path(__file__).parent
-long_description = (this_directory / "README.md").read_text()
-
 setup(
     name="fastcoref",
-    long_description=long_description,
-    long_description_content_type="text/markdown",
+    description="Tapestry's inference-only FastCoref runtime for Transformers 5",
     version="3.0.0",
     license="MIT",
     author="Shon Otmazgin, Arie Cattan, Yoav Goldberg",

@@ -7,8 +7,6 @@ from logging import getLogger as logging_getLogger
 
 from datasets import Dataset
 from numpy import nonzero as np_nonzero
-from spacy import load as spacy_load
-from spacy.cli import download
 from spacy.language import Language
 from torch import cuda as torch_cuda
 from torch import device as torch_device
@@ -24,7 +22,8 @@ from .utilities.util import (
     align_to_char_level,
     create_clusters,
     create_mention_to_antecedent,
-    encode,
+    encode_pretokenized,
+    encode_text,
     set_seed,
 )
 
@@ -127,15 +126,14 @@ class CorefModel:
         coref_class,
         collator_class,
         enable_progress_bar,
-        device=False,
-        nlp="en_core_web_sm",
+        device: str,
+        nlp: Language,
     ):
-        if nlp is None:
-            nlp = "en_core_web_sm"
         self.model_name_or_path = model_name_or_path
-        self.device = device
+        selected_device = device or ("cuda" if torch_cuda.is_available() else "cpu")
+        self.device = torch_device(selected_device)
+        self.n_gpu = torch_cuda.device_count()
         self.seed = 42
-        self.set_device()
         self.enable_progress_bar = enable_progress_bar
 
         config = AutoConfig.from_pretrained(self.model_name_or_path)
@@ -156,18 +154,9 @@ class CorefModel:
             raise NotImplementedError(
                 f"Class collator {type(collator_class)} is not supported! only LeftOversCollator or PadCollator supported"
             )
-        if nlp == "en_core_web_sm":
-            self.nlp = False
-            logger.warning("You didn't specify a spacy model, you'll need to provide tokenized text in the `predict` function.")
-        elif isinstance(nlp, Language):
-            self.nlp = nlp
-        else:
-            try:
-                self.nlp = spacy_load(nlp, exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"])
-            except OSError:
-                # TODO: this is a workaround it is not clear how to add "en_core_web_sm" to setup.py
-                download(nlp)
-                self.nlp = spacy_load(nlp, exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"])
+        if not isinstance(nlp, Language):
+            raise TypeError("nlp must be an initialized spaCy Language pipeline")
+        self.nlp = nlp
 
         self.model = coref_class.from_pretrained(
             self.model_name_or_path,
@@ -181,13 +170,6 @@ class CorefModel:
         set_seed(self)
         transformers_logging.set_verbosity_error()
 
-    def set_device(self):
-        if self.device is False:
-            self.device = "cuda" if torch_cuda.is_available() else "cpu"
-        self.device = torch_device(self.device)
-        self.n_gpu = torch_cuda.device_count()
-        return False
-
     def create_dataset(self, texts, is_split_into_words):
         logger.info(f"Tokenize {len(texts)} inputs...")
 
@@ -197,15 +179,20 @@ class CorefModel:
             dataset["tokens"] = texts
 
         dataset = Dataset.from_dict(dataset)
-        dataset = dataset.map(
-            encode,
-            batched=True,
-            batch_size=10000,
-            fn_kwargs={
-                "tokenizer": self.tokenizer,
-                "nlp": self.nlp if not is_split_into_words else False,
-            },
-        )
+        if is_split_into_words:
+            dataset = dataset.map(
+                encode_pretokenized,
+                batched=True,
+                batch_size=10000,
+                fn_kwargs={"tokenizer": self.tokenizer},
+            )
+        else:
+            dataset = dataset.map(
+                encode_text,
+                batched=True,
+                batch_size=10000,
+                fn_kwargs={"tokenizer": self.tokenizer, "nlp": self.nlp},
+            )
 
         return dataset
 
@@ -287,9 +274,6 @@ class CorefModel:
         """
 
         # Input type checking for clearer error
-        if output_file is None:
-            output_file = ""
-
         def is_valid_text_input(texts, is_split_into_words):
             if isinstance(texts, str) and not is_split_into_words:
                 # Strings are fine
@@ -356,8 +340,9 @@ class FCoref(CorefModel):
     def __init__(
         self,
         model_name_or_path="biu-nlp/f-coref",
-        device=False,
-        nlp="en_core_web_sm",
+        device: str = "",
+        *,
+        nlp: Language,
         enable_progress_bar=True,
     ):
         super().__init__(
@@ -374,8 +359,9 @@ class LingMessCoref(CorefModel):
     def __init__(
         self,
         model_name_or_path="biu-nlp/lingmess-coref",
-        device=False,
-        nlp="en_core_web_sm",
+        device: str = "",
+        *,
+        nlp: Language,
         enable_progress_bar=True,
     ):
         super().__init__(

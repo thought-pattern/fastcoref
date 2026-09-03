@@ -1,6 +1,6 @@
 # fastcoref (Tapestry Fork)
 
-Fork of [shon-otmazgin/fastcoref](https://github.com/shon-otmazgin/fastcoref) v2.1.6, using the current Transformers 5 runtime.
+Inference-only fork of [shon-otmazgin/fastcoref](https://github.com/shon-otmazgin/fastcoref) v2.1.6, using the current Transformers 5 runtime. The package contains the model and inference utilities used by Tapestry; obsolete research training entrypoints and generated package metadata are not maintained as parallel source representations.
 
 ## Changes from upstream
 
@@ -10,8 +10,10 @@ Fork of [shon-otmazgin/fastcoref](https://github.com/shon-otmazgin/fastcoref) v2
 
 ```python
 from fastcoref import FCoref
+from spacy import load
 
-model = FCoref()
+nlp = load("en_core_web_sm", exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"])
+model = FCoref(nlp=nlp)
 
 preds = model.predict(texts='John went to the store. He bought milk.')
 preds.get_clusters()
@@ -25,8 +27,10 @@ For the more accurate LingMess model:
 
 ```python
 from fastcoref import LingMessCoref
+from spacy import load
 
-model = LingMessCoref()
+nlp = load("en_core_web_sm", exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"])
+model = LingMessCoref(nlp=nlp)
 ```
 
 ## Citation

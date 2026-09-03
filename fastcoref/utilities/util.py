@@ -104,33 +104,45 @@ def update_metrics(metrics, span_starts, span_ends, gold_clusters, predicted_clu
     return False
 
 
-def encode(batch, tokenizer, nlp):
-    if nlp is not None:
-        tokenized_texts = tokenize_with_spacy(batch.get("text", ""), nlp)
-    else:
-        tokenized_texts = batch
-        tokenized_texts["offset_mapping"] = [
-            (list(zip(range(len(tokens)), range(1, 1 + len(tokens)), strict=False))) for tokens in tokenized_texts.get("tokens", 0)
-        ]
+def encode_tokenized_texts(tokenized_texts, tokenizer) -> dict:
+    """Encode normalized token and character-offset batches."""
     encoded_batch = tokenizer(
-        tokenized_texts.get("tokens", 0),
+        tokenized_texts.get("tokens", []),
         add_special_tokens=True,
         is_split_into_words=True,
         return_length=True,
         return_attention_mask=False,
     )
     computed_return_value = {
-        "tokens": tokenized_texts.get("tokens", 0),
+        "tokens": tokenized_texts.get("tokens", []),
         "input_ids": encoded_batch.get("input_ids", []),
         "length": encoded_batch.get("length", 0),
         # bpe token -> spacy tokens
         "subtoken_map": [enc.word_ids for enc in encoded_batch.encodings],
         # this is a can use for speaker info TODO: better name!
-        "new_token_map": [list(range(len(tokens))) for tokens in tokenized_texts.get("tokens", 0)],
+        "new_token_map": [list(range(len(tokens))) for tokens in tokenized_texts.get("tokens", [])],
         # spacy tokens -> text char
         "offset_mapping": tokenized_texts.get("offset_mapping", {}),
     }
     return computed_return_value
+
+
+def encode_text(batch, tokenizer, nlp) -> dict:
+    """Tokenize a text batch with the configured spaCy language pipeline."""
+    tokenized_texts = tokenize_with_spacy(batch.get("text", []), nlp)
+    result = encode_tokenized_texts(tokenized_texts, tokenizer)
+    return result
+
+
+def encode_pretokenized(batch, tokenizer) -> dict:
+    """Encode caller-supplied tokens with deterministic character offsets."""
+    tokens = batch.get("tokens", [])
+    tokenized_texts = dict(batch)
+    tokenized_texts["offset_mapping"] = [
+        list(zip(range(len(values)), range(1, 1 + len(values)), strict=False)) for values in tokens
+    ]
+    result = encode_tokenized_texts(tokenized_texts, tokenizer)
+    return result
 
 
 def tokenize_with_spacy(texts, nlp):
@@ -158,25 +170,18 @@ def tokenize_with_spacy(texts, nlp):
     return tokenized_texts
 
 
-def align_to_char_level(span_starts, span_ends, token_to_char, subtoken_map=False, new_token_map=False):
-    if new_token_map is None:
-        new_token_map = False
-    if subtoken_map is None:
-        subtoken_map = False
+def align_to_char_level(span_starts, span_ends, token_to_char, subtoken_map):
     char_map = {}
     reverse_char_map = {}
     for idx, (start, end) in enumerate(zip(span_starts, span_ends, strict=False)):
         new_start, new_end = start.copy(), end.copy()
 
         try:
-            if subtoken_map is not False:
-                new_start, new_end = subtoken_map[new_start], subtoken_map[new_end]
-                if new_start is None or new_end is None:
-                    # this is a special token index
-                    char_map[(start, end)] = False, False
-                    continue
-            if new_token_map is not False:
-                new_start, new_end = new_token_map[new_start], new_token_map[new_end]
+            new_start, new_end = subtoken_map[new_start], subtoken_map[new_end]
+            if new_start is None or new_end is None:
+                # Tokenizer boundary: special tokens have no source token.
+                char_map[(start, end)] = False, False
+                continue
             new_start, new_end = token_to_char[new_start][0], token_to_char[new_end][1]
             char_map[(start, end)] = idx, (new_start, new_end)
             reverse_char_map[(new_start, new_end)] = idx, (start, end)
