@@ -7,4 +7,4 @@ torch==2.13.0
 sentencepiece==0.2.2
 transformers==5.16.1
 datasets==5.0.1
-protobuf==7.36.0
+protobuf==7.36.2
