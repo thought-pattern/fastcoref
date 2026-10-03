@@ -235,8 +235,9 @@ class LingMessModel(BertPreTrainedModel):
         for b, (starts, ends) in enumerate(zip(span_starts.cpu().tolist(), span_ends.cpu().tolist(), strict=False)):
             doc_spans = []
             for start, end in zip(starts, ends, strict=False):
-                token_indices = [new_token_map[b].get(idx, False) for idx in set(subtoken_map[b][start : end + 1]) - {False}]
-                span = {tokens[b][idx].lower() for idx in token_indices if idx is not None}
+                # The tokenizer's word ids mark special tokens with None; source token 0 is a real word.
+                word_indices = {idx for idx in subtoken_map[b][start : end + 1] if idx is not None}
+                span = {tokens[b][new_token_map[b][idx]].lower() for idx in word_indices}
                 pronoun_id = get_pronoun_id(span)
                 doc_spans.append((span - STOPWORDS, pronoun_id))
             spans.append(doc_spans)

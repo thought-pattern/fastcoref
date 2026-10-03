@@ -36,6 +36,26 @@ logging_basicConfig(
 )
 
 
+def aligned_char_clusters(clusters, char_map) -> list:
+    """Return each cluster's source character spans in mention order.
+
+    align_to_char_level gives a mention on a tokenizer special or padding position a False
+    span. That mention has no source coordinates, so it is omitted, and a cluster left with
+    fewer than two aligned mentions no longer states a coreference.
+    """
+    char_clusters = []
+    omitted = 0
+    for cluster in clusters:
+        spans = [char_map.get(mention, (False, False))[1] for mention in cluster]
+        aligned = [span for span in spans if isinstance(span, tuple)]
+        omitted += len(spans) - len(aligned)
+        if len(aligned) >= 2:
+            char_clusters.append(aligned)
+    if omitted:
+        logger.info(f"Omitted {omitted} coreference mention(s) without a source text alignment")
+    return char_clusters
+
+
 class CorefResult:
     def __init__(self, text, clusters, char_map, reverse_char_map, coref_logit, text_idx):
         self.text = text
@@ -44,20 +64,15 @@ class CorefResult:
         self.reverse_char_map = reverse_char_map
         self.coref_logit = coref_logit
         self.text_idx = text_idx
+        # Both cluster views and the resolved text read this one aligned form, so they stay in step.
+        self.char_clusters = aligned_char_clusters(clusters, char_map)
 
     def get_clusters(self, as_strings=True):
         if not as_strings:
-            computed_return_value = [[self.char_map[mention][1] for mention in cluster] for cluster in self.clusters]
+            computed_return_value = [list(cluster) for cluster in self.char_clusters]
             return computed_return_value
 
-        computed_return_value = [
-            [
-                self.text[self.char_map[mention][1][0] : self.char_map[mention][1][1]]
-                for mention in cluster
-                if None not in self.char_map[mention]
-            ]
-            for cluster in self.clusters
-        ]
+        computed_return_value = [[self.text[start:end] for start, end in cluster] for cluster in self.char_clusters]
         return computed_return_value
 
     def get_logit(self, span_i, span_j):
