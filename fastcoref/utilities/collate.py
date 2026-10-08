@@ -5,7 +5,7 @@ from math import ceil as math_ceil
 
 from torch import tensor as torch_tensor
 
-from .util import pad_clusters
+from fastcoref.fastcoref.utilities.util import pad_clusters
 
 logger = logging_getLogger(__name__)
 

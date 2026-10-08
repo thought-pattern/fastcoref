@@ -3,29 +3,31 @@
 from math import sqrt as math_sqrt
 
 from numpy import zeros as np_zeros
-from torch import arange as torch_arange
-from torch import cat as torch_cat
-from torch import div as torch_div
-from torch import einsum as torch_einsum
-from torch import empty as torch_empty
-from torch import gather as torch_gather
-from torch import logsumexp as torch_logsumexp
-from torch import matmul as torch_matmul
-from torch import max as torch_max
-from torch import nn
-from torch import ones_like as torch_ones_like
-from torch import sort as torch_sort
-from torch import stack as torch_stack
-from torch import sum as torch_sum
-from torch import tensor as torch_tensor
-from torch import topk as torch_topk
-from torch import zeros as torch_zeros
+from torch import (
+    arange as torch_arange,
+    cat as torch_cat,
+    div as torch_div,
+    einsum as torch_einsum,
+    empty as torch_empty,
+    gather as torch_gather,
+    logsumexp as torch_logsumexp,
+    matmul as torch_matmul,
+    max as torch_max,
+    nn,
+    ones_like as torch_ones_like,
+    sort as torch_sort,
+    stack as torch_stack,
+    sum as torch_sum,
+    tensor as torch_tensor,
+    topk as torch_topk,
+    zeros as torch_zeros,
+)
 from torch.nn import Dropout, LayerNorm, Linear, Module, init
 from transformers import AutoModel, BertPreTrainedModel
 from transformers.activations import ACT2FN
 
-from ..utilities.consts import CATEGORIES, STOPWORDS
-from ..utilities.util import (
+from fastcoref.fastcoref.utilities.consts import CATEGORIES, STOPWORDS
+from fastcoref.fastcoref.utilities.util import (
     extract_clusters,
     extract_mentions_to_clusters,
     get_category_id,

@@ -3,8 +3,9 @@
 from pathlib import Path
 from unittest import TestCase as unittest_TestCase
 
-from fastcoref import CorefResult, FCoref
 from spacy import load as spacy_load
+
+from fastcoref.fastcoref.modeling import CorefResult, FCoref
 
 
 class TestFCoref(unittest_TestCase):

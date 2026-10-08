@@ -1,19 +1,14 @@
 """Utilities for util."""
 
 from logging import getLogger as logging_getLogger
-from os import makedirs as os_makedirs
-from os import path as os_path
+from os import makedirs as os_makedirs, path as os_path
 from random import seed as random_seed
 
-from numpy import nonzero as np_nonzero
-from numpy import random as np_random
-from numpy import stack as np_stack
-from torch import clamp as torch_clamp
-from torch import cuda as torch_cuda
-from torch import manual_seed as torch_manual_seed
+from numpy import nonzero as np_nonzero, random as np_random, stack as np_stack
+from torch import clamp as torch_clamp, cuda as torch_cuda, manual_seed as torch_manual_seed
 
-from .consts import CATEGORIES, NULL_ID_FOR_COREF, PRONOUNS_GROUPS
-from .metrics import CorefEvaluator, MentionEvaluator
+from fastcoref.fastcoref.utilities.consts import CATEGORIES, NULL_ID_FOR_COREF, PRONOUNS_GROUPS
+from fastcoref.fastcoref.utilities.metrics import CorefEvaluator, MentionEvaluator
 
 logger = logging_getLogger(__name__)
 

@@ -1,24 +1,19 @@
 """Utilities for modeling."""
 
 from json import dumps as json_dumps
-from logging import INFO as logging_INFO
-from logging import basicConfig as logging_basicConfig
-from logging import getLogger as logging_getLogger
+from logging import INFO as logging_INFO, basicConfig as logging_basicConfig, getLogger as logging_getLogger
 
 from datasets import Dataset
 from numpy import nonzero as np_nonzero
 from spacy.language import Language
-from torch import cuda as torch_cuda
-from torch import device as torch_device
-from torch import no_grad as torch_no_grad
+from torch import cuda as torch_cuda, device as torch_device, no_grad as torch_no_grad
 from tqdm.auto import tqdm
-from transformers import AutoConfig, AutoTokenizer
-from transformers import logging as transformers_logging
+from transformers import AutoConfig, AutoTokenizer, logging as transformers_logging
 
-from .coref_models.modeling_fcoref import FCorefModel
-from .coref_models.modeling_lingmess import LingMessModel
-from .utilities.collate import DynamicBatchSampler, LeftOversCollator, PadCollator
-from .utilities.util import (
+from fastcoref.fastcoref.coref_models.modeling_fcoref import FCorefModel
+from fastcoref.fastcoref.coref_models.modeling_lingmess import LingMessModel
+from fastcoref.fastcoref.utilities.collate import DynamicBatchSampler, LeftOversCollator, PadCollator
+from fastcoref.fastcoref.utilities.util import (
     align_to_char_level,
     create_clusters,
     create_mention_to_antecedent,
@@ -224,8 +219,8 @@ class CorefModel:
 
     def batch_inference(self, batch):
         texts = batch.get("text", [])
-        subtoken_map = batch.get("subtoken_map", False)
-        token_to_char = batch.get("offset_mapping", {})
+        subtoken_map = batch.get("subtoken_map", [])
+        token_to_char = batch.get("offset_mapping", [])
         idxs = batch.get("idx", [])
         with torch_no_grad():
             outputs = self.model(batch, return_all_outputs=True)

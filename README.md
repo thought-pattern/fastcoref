@@ -9,7 +9,7 @@ Inference-only fork of [shon-otmazgin/fastcoref](https://github.com/shon-otmazgi
 ## Usage
 
 ```python
-from fastcoref import FCoref
+from fastcoref.fastcoref.modeling import FCoref
 from spacy import load
 
 nlp = load("en_core_web_sm", exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"])
@@ -26,7 +26,7 @@ preds.get_resolved_text()
 For the more accurate LingMess model:
 
 ```python
-from fastcoref import LingMessCoref
+from fastcoref.fastcoref.modeling import LingMessCoref
 from spacy import load
 
 nlp = load("en_core_web_sm", exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"])
