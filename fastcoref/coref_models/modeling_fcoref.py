@@ -18,7 +18,11 @@ from torch.nn import Dropout, LayerNorm, Linear, Module
 from transformers import AutoModel, BertPreTrainedModel
 from transformers.activations import ACT2FN
 
-from fastcoref.fastcoref.utilities.util import extract_clusters, extract_mentions_to_clusters, mask_tensor
+from fastcoref.fastcoref.utilities.util import (
+    extract_clusters,
+    extract_mentions_to_clusters,
+    mask_tensor,
+)
 
 # took from: https://github.com/yuvalkirstain/s2e-coref
 

@@ -1,7 +1,11 @@
 """Utilities for modeling."""
 
 from json import dumps as json_dumps
-from logging import INFO as logging_INFO, basicConfig as logging_basicConfig, getLogger as logging_getLogger
+from logging import (
+    INFO as logging_INFO,
+    basicConfig as logging_basicConfig,
+    getLogger as logging_getLogger,
+)
 
 from datasets import Dataset
 from numpy import nonzero as np_nonzero
@@ -12,7 +16,11 @@ from transformers import AutoConfig, AutoTokenizer, logging as transformers_logg
 
 from fastcoref.fastcoref.coref_models.modeling_fcoref import FCorefModel
 from fastcoref.fastcoref.coref_models.modeling_lingmess import LingMessModel
-from fastcoref.fastcoref.utilities.collate import DynamicBatchSampler, LeftOversCollator, PadCollator
+from fastcoref.fastcoref.utilities.collate import (
+    DynamicBatchSampler,
+    LeftOversCollator,
+    PadCollator,
+)
 from fastcoref.fastcoref.utilities.util import (
     align_to_char_level,
     create_clusters,

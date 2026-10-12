@@ -12,7 +12,10 @@ class TestFCoref(unittest_TestCase):
     @classmethod
     def setUpClass(cls):
         model_path = Path(__file__).parents[2] / "weights" / "biu-nlp" / "f-coref"
-        nlp = spacy_load("en_core_web_sm", exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"])
+        nlp = spacy_load(
+            "en_core_web_sm",
+            exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"],
+        )
         cls.model = FCoref(
             model_name_or_path=str(model_path),
             device="cpu",

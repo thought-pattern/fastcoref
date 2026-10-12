@@ -5,9 +5,17 @@ from os import makedirs as os_makedirs, path as os_path
 from random import seed as random_seed
 
 from numpy import nonzero as np_nonzero, random as np_random, stack as np_stack
-from torch import clamp as torch_clamp, cuda as torch_cuda, manual_seed as torch_manual_seed
+from torch import (
+    clamp as torch_clamp,
+    cuda as torch_cuda,
+    manual_seed as torch_manual_seed,
+)
 
-from fastcoref.fastcoref.utilities.consts import CATEGORIES, NULL_ID_FOR_COREF, PRONOUNS_GROUPS
+from fastcoref.fastcoref.utilities.consts import (
+    CATEGORIES,
+    NULL_ID_FOR_COREF,
+    PRONOUNS_GROUPS,
+)
 from fastcoref.fastcoref.utilities.metrics import CorefEvaluator, MentionEvaluator
 
 logger = logging_getLogger(__name__)
