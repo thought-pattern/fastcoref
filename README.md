@@ -2,6 +2,8 @@
 
 Inference-only fork of [shon-otmazgin/fastcoref](https://github.com/shon-otmazgin/fastcoref) v2.1.6, using the current Transformers 5 runtime. The package contains the model and inference utilities used by Tapestry; obsolete research training entrypoints and generated package metadata are not maintained as parallel source representations.
 
+The fork deploys with Tapestry as one unversioned implementation. Dependency constraints remain in `requirements.txt` and `setup.py`.
+
 ## Changes from upstream
 
 - Added `CorefResult.get_resolved_text()` to produce text with pronouns replaced by their canonical antecedents

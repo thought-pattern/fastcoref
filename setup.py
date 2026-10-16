@@ -5,7 +5,6 @@ from setuptools import setup
 setup(
     name="fastcoref",
     description="Tapestry's inference-only FastCoref runtime for Transformers 5",
-    version="3.0.0",
     license="MIT",
     author="Shon Otmazgin, Arie Cattan, Yoav Goldberg",
     author_email="shon711@gmail.com",
