@@ -9,6 +9,8 @@ from fastcoref.fastcoref.modeling import CorefResult, FCoref
 
 
 class TestFCoref(unittest_TestCase):
+    """FCoref predictions over the staged local weights."""
+
     @classmethod
     def setUpClass(cls):
         model_path = Path(__file__).parents[2] / "weights" / "biu-nlp" / "f-coref"

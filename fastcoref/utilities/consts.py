@@ -5,6 +5,10 @@ SPEAKER_START = "#####"
 SPEAKER_END = "###"
 NULL_ID_FOR_COREF = -1
 
+# Hugging Face Hub commits the default models download from. A local weights path ignores them.
+FCOREF_REVISION = "e91dfff12879495d882ba9460d0c5d5dd44ade59"
+LINGMESS_REVISION = "fa5d8a827a09388d03adbe9e800c7d8c509c3935"
+
 
 PRONOUNS_GROUPS = {
     "i": 0,

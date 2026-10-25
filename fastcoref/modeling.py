@@ -21,6 +21,7 @@ from fastcoref.fastcoref.utilities.collate import (
     LeftOversCollator,
     PadCollator,
 )
+from fastcoref.fastcoref.utilities.consts import FCOREF_REVISION, LINGMESS_REVISION
 from fastcoref.fastcoref.utilities.util import (
     align_to_char_level,
     create_clusters,
@@ -60,6 +61,8 @@ def aligned_char_clusters(clusters, char_map) -> list:
 
 
 class CorefResult:
+    """One text's predicted coreference clusters with their character spans and antecedent logits."""
+
     def __init__(self, text, clusters, char_map, reverse_char_map, coref_logit, text_idx):
         self.text = text
         self.clusters = clusters
@@ -108,7 +111,8 @@ class CorefResult:
             if len(char_cluster) < 2:
                 continue
             # Pick longest mention as canonical
-            canonical_idx = max(range(len(str_cluster)), key=lambda i: len(str_cluster[i]))
+            mention_lengths = [len(mention) for mention in str_cluster]
+            canonical_idx = mention_lengths.index(max(mention_lengths))
             canonical = str_cluster[canonical_idx]
             for i, (start, end) in enumerate(char_cluster):
                 if i != canonical_idx:
@@ -138,6 +142,11 @@ class CorefResult:
 
 
 class CorefModel:
+    """Coreference inference over a pretrained model, its tokenizer, a collator and a spaCy pipeline.
+
+    A Hugging Face Hub model name downloads the pinned revision; a local weights path loads as is.
+    """
+
     def __init__(
         self,
         model_name_or_path,
@@ -146,19 +155,23 @@ class CorefModel:
         enable_progress_bar,
         device: str,
         nlp: Language,
+        revision: str,
     ):
         self.model_name_or_path = model_name_or_path
+        self.revision = revision
         selected_device = device or ("cuda" if torch_cuda.is_available() else "cpu")
         self.device = torch_device(selected_device)
         self.n_gpu = torch_cuda.device_count()
         self.seed = 42
         self.enable_progress_bar = enable_progress_bar
 
-        config = AutoConfig.from_pretrained(self.model_name_or_path)
+        config = AutoConfig.from_pretrained(self.model_name_or_path, revision=self.revision)
         self.max_segment_len = config.coref_head.get("max_segment_len", False)
         self.max_doc_len = config.coref_head.get("max_doc_len", False) if "max_doc_len" in config.coref_head else False
 
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path, use_fast=True, add_prefix_space=True, verbose=False)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.model_name_or_path, revision=self.revision, use_fast=True, add_prefix_space=True, verbose=False
+        )
 
         if collator_class == PadCollator:
             self.collator = PadCollator(tokenizer=self.tokenizer, device=self.device)
@@ -179,6 +192,7 @@ class CorefModel:
         self.model = coref_class.from_pretrained(
             self.model_name_or_path,
             config=config,
+            revision=self.revision,
         )
         self.model.to(self.device)
 
@@ -235,7 +249,7 @@ class CorefModel:
 
         outputs_np = tuple(tensor.cpu().numpy() for tensor in outputs)
 
-        span_starts, span_ends, mention_logits, coref_logits = outputs_np
+        span_starts, span_ends, _, coref_logits = outputs_np
         doc_indices, mention_to_antecedent = create_mention_to_antecedent(span_starts, span_ends, coref_logits)
 
         results = []
@@ -338,7 +352,7 @@ class CorefModel:
 
         preds = self.inference(dataloader)
         if output_file != "":
-            with open(output_file, "w") as f:
+            with open(output_file, "w", encoding="utf-8") as f:
                 data = [
                     {
                         "text": p.text,
@@ -355,6 +369,8 @@ class CorefModel:
 
 
 class FCoref(CorefModel):
+    """The F-coref model with the leftovers collator."""
+
     def __init__(
         self,
         model_name_or_path="biu-nlp/f-coref",
@@ -362,6 +378,7 @@ class FCoref(CorefModel):
         *,
         nlp: Language,
         enable_progress_bar=True,
+        revision: str = FCOREF_REVISION,
     ):
         super().__init__(
             model_name_or_path,
@@ -370,10 +387,13 @@ class FCoref(CorefModel):
             enable_progress_bar,
             device,
             nlp,
+            revision,
         )
 
 
 class LingMessCoref(CorefModel):
+    """The LingMess model with the padding collator."""
+
     def __init__(
         self,
         model_name_or_path="biu-nlp/lingmess-coref",
@@ -381,6 +401,7 @@ class LingMessCoref(CorefModel):
         *,
         nlp: Language,
         enable_progress_bar=True,
+        revision: str = LINGMESS_REVISION,
     ):
         super().__init__(
             model_name_or_path,
@@ -389,4 +410,5 @@ class LingMessCoref(CorefModel):
             enable_progress_bar,
             device,
             nlp,
+            revision,
         )

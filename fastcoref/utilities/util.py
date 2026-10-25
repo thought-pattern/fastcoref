@@ -76,7 +76,7 @@ def output_evaluation_metrics(metrics_dict, prefix):
         "f1": f1,
     }
 
-    logger.info("***** Eval results {} *****".format(prefix))
+    logger.info("***** Eval results %s *****", prefix)
     for key, value in results.items():
         if isinstance(value, float):
             logger.info(f"  {key: <30} = {value:.3f}")
@@ -246,7 +246,7 @@ def create_clusters(mention_to_antecedent):
 
 
 def create_mention_to_antecedent(span_starts, span_ends, coref_logits):
-    batch_size, n_spans, _ = coref_logits.shape
+    _, n_spans, _ = coref_logits.shape
 
     max_antecedents = coref_logits.argmax(axis=-1)
     doc_indices, mention_indices = np_nonzero(max_antecedents < n_spans)  # indices where antecedent is not null.

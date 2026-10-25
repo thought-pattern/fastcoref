@@ -14,6 +14,8 @@ def f1(p_num, p_den, r_num, r_den, beta=1):
 
 
 class MentionEvaluator:
+    """Precision, recall and F1 of predicted mentions against gold mentions."""
+
     def __init__(self):
         self.tp, self.fp, self.fn = 0, 0, 0
 
@@ -46,6 +48,8 @@ class MentionEvaluator:
 
 
 class CorefEvaluator(object):
+    """Average of the MUC, B-cubed and CEAFe coreference metrics."""
+
     def __init__(self):
         self.evaluators = [Evaluator(m) for m in (muc, b_cubed, ceafe)]
 
@@ -72,6 +76,8 @@ class CorefEvaluator(object):
 
 
 class Evaluator(object):
+    """Accumulated precision and recall counts for one coreference metric."""
+
     def __init__(self, metric, beta=1):
         self.p_num = 0
         self.p_den = 0
@@ -81,7 +87,7 @@ class Evaluator(object):
         self.beta = beta
 
     def update(self, predicted, gold, mention_to_predicted, mention_to_gold):
-        if self.metric == ceafe:
+        if self.metric is ceafe:
             pn, pd, rn, rd = self.metric(predicted, gold)
         else:
             pn, pd = self.metric(predicted, mention_to_gold)

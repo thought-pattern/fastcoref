@@ -37,6 +37,8 @@ from fastcoref.fastcoref.utilities.util import (
 
 
 class FullyConnectedLayer(Module):
+    """Dense layer followed by the configured activation, layer norm and dropout."""
+
     def __init__(self, config, input_dim, output_dim, dropout_prob):
         super(FullyConnectedLayer, self).__init__()
 
@@ -59,6 +61,7 @@ class FullyConnectedLayer(Module):
 
 
 class LingMessModel(BertPreTrainedModel):
+    """LingMess: a transformer encoder with a coreference head that scores antecedents per linguistic pair category."""
 
     def __init__(self, config):
         super().__init__(config)
@@ -421,7 +424,7 @@ class LingMessModel(BertPreTrainedModel):
             mention_end_ids,
             span_mask,
             topk_mention_logits,
-            topk_1d_indices,
+            _,
         ) = self.prune_topk_mentions(mention_logits, attention_mask)
 
         categories_labels, categories_masks = self.get_categories_labels(

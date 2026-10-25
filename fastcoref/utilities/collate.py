@@ -11,6 +11,8 @@ logger = logging_getLogger(__name__)
 
 
 class LeftOversCollator:
+    """Split padded documents into fixed-length segments and carry a shorter final segment as leftovers."""
+
     def __init__(self, tokenizer, device, max_segment_len):
         self.tokenizer = tokenizer
         self.device = device
@@ -60,6 +62,8 @@ class LeftOversCollator:
 
 
 class PadCollator:
+    """Pad documents to the longest one in the batch."""
+
     def __init__(self, tokenizer, device, max_segment_len=512):
         self.tokenizer = tokenizer
         self.device = device

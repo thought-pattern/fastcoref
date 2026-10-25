@@ -7,6 +7,7 @@ The fork deploys with Tapestry as one unversioned implementation. Dependency con
 ## Changes from upstream
 
 - Added `CorefResult.get_resolved_text()` to produce text with pronouns replaced by their canonical antecedents
+- `FCoref` and `LingMessCoref` download a pinned Hugging Face Hub commit of their default model (`revision`); a local weights path loads as is
 
 ## Usage
 

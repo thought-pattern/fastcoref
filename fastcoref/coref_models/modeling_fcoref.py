@@ -28,6 +28,8 @@ from fastcoref.fastcoref.utilities.util import (
 
 
 class FullyConnectedLayer(Module):
+    """Dense layer followed by the configured activation, layer norm and dropout."""
+
     def __init__(self, config, input_dim, output_dim, dropout_prob):
         super(FullyConnectedLayer, self).__init__()
 
@@ -50,6 +52,7 @@ class FullyConnectedLayer(Module):
 
 
 class FCorefModel(BertPreTrainedModel):
+    """F-coref: a transformer encoder with a mention-pruning, antecedent-scoring coreference head."""
 
     def __init__(self, config):
         super().__init__(config)
