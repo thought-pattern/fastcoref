@@ -107,13 +107,23 @@ class DynamicBatchSampler:
         self.collator = collator
         self.max_segment_len = max_segment_len
         self.max_doc_len = max_doc_len
+        self.skipped = []
 
     def __iter__(self):
+        self.skipped = []
         batch = []
         per_example_batch_len = 0
+        has_max_doc_len = isinstance(self.max_doc_len, int) and not isinstance(self.max_doc_len, bool)
         for example in self.dataset:
-            if self.max_doc_len is not False and example.get("length", 0) > self.max_doc_len:
+            if has_max_doc_len and example.get("length", 0) > self.max_doc_len:
                 logger.info(f"Skipping doc with len {example.get('length', 0)}. max_doc_len is {self.max_doc_len}")
+                self.skipped.append(
+                    {
+                        "idx": example.get("idx", 0),
+                        "text": example.get("text", ""),
+                        "length": example.get("length", 0),
+                    }
+                )
                 continue
             example_len = self.calc_effective_per_example_batch_len(example.get("length", 0))
             if example_len > self.max_tokens:

@@ -8,7 +8,7 @@ from logging import (
 )
 
 from datasets import Dataset
-from numpy import nonzero as np_nonzero
+from numpy import empty as np_empty, float32 as np_float32, nonzero as np_nonzero
 from spacy.language import Language
 from torch import cuda as torch_cuda, device as torch_device, no_grad as torch_no_grad
 from tqdm.auto import tqdm
@@ -107,6 +107,7 @@ class CorefResult:
 
         # Build replacement list: for each cluster, the longest mention is the antecedent
         replacements = []
+        order = 0
         for char_cluster, str_cluster in zip(char_clusters, str_clusters, strict=False):
             if len(char_cluster) < 2:
                 continue
@@ -115,16 +116,24 @@ class CorefResult:
             canonical_idx = mention_lengths.index(max(mention_lengths))
             canonical = str_cluster[canonical_idx]
             for i, (start, end) in enumerate(char_cluster):
-                if i != canonical_idx:
-                    replacements.append((start, end, canonical))
+                if i != canonical_idx and start < end:
+                    replacements.append((start, end, canonical, order))
+                    order += 1
 
         if not replacements:
             return self.text
 
-        # Sort by position descending so replacements don't shift indices
-        replacements.sort(key=lambda r: r[0], reverse=True)
+        # Keep outer longest non-overlapping spans first, then apply in descending start order.
+        ordered = sorted(replacements, key=lambda item: (-(item[1] - item[0]), item[0], item[3]))
+        selected = []
+        for start, end, canonical, _ in ordered:
+            if any(start < kept_end and kept_start < end for kept_start, kept_end, _ in selected):
+                continue
+            selected.append((start, end, canonical))
+
+        selected.sort(key=lambda item: item[0], reverse=True)
         resolved = self.text
-        for start, end, replacement in replacements:
+        for start, end, replacement in selected:
             resolved = resolved[:start] + replacement + resolved[end:]
         return resolved
 
@@ -283,9 +292,28 @@ class CorefModel:
                 for batch in dataloader:
                     results.extend(self.batch_inference(batch))
                     progress_bar.update(n=len(batch.get("text", "")))
+                skipped_count = len(getattr(dataloader, "skipped", []))
+                if skipped_count:
+                    progress_bar.update(n=skipped_count)
         else:
             for batch in dataloader:
                 results.extend(self.batch_inference(batch))
+
+        seen_indices = {res.text_idx for res in results}
+        for example in getattr(dataloader, "skipped", []):
+            idx = example.get("idx", 0)
+            if idx not in seen_indices:
+                seen_indices.add(idx)
+                results.append(
+                    CorefResult(
+                        text=example.get("text", ""),
+                        clusters=[],
+                        char_map={},
+                        reverse_char_map={},
+                        coref_logit=np_empty((0, 0), dtype=np_float32),
+                        text_idx=idx,
+                    )
+                )
 
         computed_return_value = sorted(results, key=lambda res: res.text_idx)
         return computed_return_value
@@ -320,7 +348,7 @@ class CorefModel:
                     return True
                 elif all([isinstance(t, (list, tuple)) for t in texts]):
                     # ... list with an empty list or with a list of strings
-                    computed_return_value = len(texts[0]) == 0 or isinstance(texts[0][0], str)
+                    computed_return_value = all(all(isinstance(word, str) for word in t) for t in texts)
                     return computed_return_value
                 else:
                     return False
@@ -340,9 +368,16 @@ class CorefModel:
             )
 
         if is_split_into_words:
-            is_batched = isinstance(texts, (list, tuple)) and texts and isinstance(texts[0], (list, tuple))
+            is_batched = isinstance(texts, (list, tuple)) and (len(texts) == 0 or isinstance(texts[0], (list, tuple)))
         else:
             is_batched = isinstance(texts, (list, tuple))
+
+        if is_batched and len(texts) == 0:
+            if output_file != "":
+                with open(output_file, "w", encoding="utf-8") as f:
+                    f.write("")
+            computed_return_value = []
+            return computed_return_value
 
         if not is_batched:
             texts = [texts]
