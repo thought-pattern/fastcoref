@@ -3,29 +3,31 @@
 from math import sqrt as math_sqrt
 
 from numpy import zeros as np_zeros
-from torch import arange as torch_arange
-from torch import cat as torch_cat
-from torch import div as torch_div
-from torch import einsum as torch_einsum
-from torch import empty as torch_empty
-from torch import gather as torch_gather
-from torch import logsumexp as torch_logsumexp
-from torch import matmul as torch_matmul
-from torch import max as torch_max
-from torch import nn
-from torch import ones_like as torch_ones_like
-from torch import sort as torch_sort
-from torch import stack as torch_stack
-from torch import sum as torch_sum
-from torch import tensor as torch_tensor
-from torch import topk as torch_topk
-from torch import zeros as torch_zeros
+from torch import (
+    arange as torch_arange,
+    cat as torch_cat,
+    div as torch_div,
+    einsum as torch_einsum,
+    empty as torch_empty,
+    gather as torch_gather,
+    logsumexp as torch_logsumexp,
+    matmul as torch_matmul,
+    max as torch_max,
+    nn,
+    ones_like as torch_ones_like,
+    sort as torch_sort,
+    stack as torch_stack,
+    sum as torch_sum,
+    tensor as torch_tensor,
+    topk as torch_topk,
+    zeros as torch_zeros,
+)
 from torch.nn import Dropout, LayerNorm, Linear, Module, init
 from transformers import AutoModel, BertPreTrainedModel
 from transformers.activations import ACT2FN
 
-from ..utilities.consts import CATEGORIES, STOPWORDS
-from ..utilities.util import (
+from fastcoref.fastcoref.utilities.consts import CATEGORIES, STOPWORDS
+from fastcoref.fastcoref.utilities.util import (
     extract_clusters,
     extract_mentions_to_clusters,
     get_category_id,
@@ -35,6 +37,8 @@ from ..utilities.util import (
 
 
 class FullyConnectedLayer(Module):
+    """Dense layer followed by the configured activation, layer norm and dropout."""
+
     def __init__(self, config, input_dim, output_dim, dropout_prob):
         super(FullyConnectedLayer, self).__init__()
 
@@ -57,6 +61,7 @@ class FullyConnectedLayer(Module):
 
 
 class LingMessModel(BertPreTrainedModel):
+    """LingMess: a transformer encoder with a coreference head that scores antecedents per linguistic pair category."""
 
     def __init__(self, config):
         super().__init__(config)
@@ -235,8 +240,9 @@ class LingMessModel(BertPreTrainedModel):
         for b, (starts, ends) in enumerate(zip(span_starts.cpu().tolist(), span_ends.cpu().tolist(), strict=False)):
             doc_spans = []
             for start, end in zip(starts, ends, strict=False):
-                token_indices = [new_token_map[b].get(idx, False) for idx in set(subtoken_map[b][start : end + 1]) - {False}]
-                span = {tokens[b][idx].lower() for idx in token_indices if idx is not None}
+                # The tokenizer's word ids mark special tokens with None; source token 0 is a real word.
+                word_indices = {idx for idx in subtoken_map[b][start : end + 1] if idx is not None}
+                span = {tokens[b][new_token_map[b][idx]].lower() for idx in word_indices}
                 pronoun_id = get_pronoun_id(span)
                 doc_spans.append((span - STOPWORDS, pronoun_id))
             spans.append(doc_spans)
@@ -418,7 +424,7 @@ class LingMessModel(BertPreTrainedModel):
             mention_end_ids,
             span_mask,
             topk_mention_logits,
-            topk_1d_indices,
+            _,
         ) = self.prune_topk_mentions(mention_logits, attention_mask)
 
         categories_labels, categories_masks = self.get_categories_labels(

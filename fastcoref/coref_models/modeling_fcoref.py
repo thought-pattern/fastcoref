@@ -1,27 +1,35 @@
 """Utilities for modeling fcoref."""
 
-from torch import arange as torch_arange
-from torch import cat as torch_cat
-from torch import div as torch_div
-from torch import gather as torch_gather
-from torch import logsumexp as torch_logsumexp
-from torch import matmul as torch_matmul
-from torch import max as torch_max
-from torch import ones_like as torch_ones_like
-from torch import sort as torch_sort
-from torch import sum as torch_sum
-from torch import topk as torch_topk
-from torch import zeros as torch_zeros
+from torch import (
+    arange as torch_arange,
+    cat as torch_cat,
+    div as torch_div,
+    gather as torch_gather,
+    logsumexp as torch_logsumexp,
+    matmul as torch_matmul,
+    max as torch_max,
+    ones_like as torch_ones_like,
+    sort as torch_sort,
+    sum as torch_sum,
+    topk as torch_topk,
+    zeros as torch_zeros,
+)
 from torch.nn import Dropout, LayerNorm, Linear, Module
 from transformers import AutoModel, BertPreTrainedModel
 from transformers.activations import ACT2FN
 
-from ..utilities.util import extract_clusters, extract_mentions_to_clusters, mask_tensor
+from fastcoref.fastcoref.utilities.util import (
+    extract_clusters,
+    extract_mentions_to_clusters,
+    mask_tensor,
+)
 
 # took from: https://github.com/yuvalkirstain/s2e-coref
 
 
 class FullyConnectedLayer(Module):
+    """Dense layer followed by the configured activation, layer norm and dropout."""
+
     def __init__(self, config, input_dim, output_dim, dropout_prob):
         super(FullyConnectedLayer, self).__init__()
 
@@ -44,6 +52,7 @@ class FullyConnectedLayer(Module):
 
 
 class FCorefModel(BertPreTrainedModel):
+    """F-coref: a transformer encoder with a mention-pruning, antecedent-scoring coreference head."""
 
     def __init__(self, config):
         super().__init__(config)

@@ -5,12 +5,14 @@ from math import ceil as math_ceil
 
 from torch import tensor as torch_tensor
 
-from .util import pad_clusters
+from fastcoref.fastcoref.utilities.util import pad_clusters
 
 logger = logging_getLogger(__name__)
 
 
 class LeftOversCollator:
+    """Split padded documents into fixed-length segments and carry a shorter final segment as leftovers."""
+
     def __init__(self, tokenizer, device, max_segment_len):
         self.tokenizer = tokenizer
         self.device = device
@@ -60,6 +62,8 @@ class LeftOversCollator:
 
 
 class PadCollator:
+    """Pad documents to the longest one in the batch."""
+
     def __init__(self, tokenizer, device, max_segment_len=512):
         self.tokenizer = tokenizer
         self.device = device
@@ -89,27 +93,50 @@ class PadCollator:
 
 
 class DynamicBatchSampler:
+    """Group length-sorted documents so each padded batch stays within max_tokens.
+
+    The collators pad every document to the batch's longest one, so a batch costs its size
+    times the longest effective (segment-rounded) length. A single document whose effective
+    length alone exceeds max_tokens cannot be split here; it runs in a batch of its own and
+    the excess is logged.
+    """
+
     def __init__(self, dataset, collator, max_tokens, max_segment_len, max_doc_len=False):
         self.max_tokens = max_tokens
         self.dataset = dataset.sort("length", reverse=False)
         self.collator = collator
         self.max_segment_len = max_segment_len
         self.max_doc_len = max_doc_len
+        self.skipped = []
 
     def __iter__(self):
+        self.skipped = []
         batch = []
         per_example_batch_len = 0
+        has_max_doc_len = isinstance(self.max_doc_len, int) and not isinstance(self.max_doc_len, bool)
         for example in self.dataset:
-            if self.max_doc_len is not False and example.get("length", 0) > self.max_doc_len:
+            if has_max_doc_len and example.get("length", 0) > self.max_doc_len:
                 logger.info(f"Skipping doc with len {example.get('length', 0)}. max_doc_len is {self.max_doc_len}")
+                self.skipped.append(
+                    {
+                        "idx": example.get("idx", 0),
+                        "text": example.get("text", ""),
+                        "length": example.get("length", 0),
+                    }
+                )
                 continue
-            if not batch:
-                per_example_batch_len = self.calc_effective_per_example_batch_len(example.get("length", 0))
-            elif (len(batch) + 1) * per_example_batch_len > self.max_tokens:
+            example_len = self.calc_effective_per_example_batch_len(example.get("length", 0))
+            if example_len > self.max_tokens:
+                logger.warning(
+                    f"Doc with effective len {example_len} exceeds max_tokens {self.max_tokens}; running it in its own batch"
+                )
+            candidate_len = max(per_example_batch_len, example_len)
+            if batch and (len(batch) + 1) * candidate_len > self.max_tokens:
                 yield self.collator(batch)
                 batch = []
-                per_example_batch_len = self.calc_effective_per_example_batch_len(example.get("length", 0))
+                candidate_len = example_len
             batch.append(example)
+            per_example_batch_len = candidate_len
         if len(batch) > 0:
             yield self.collator(batch)
 

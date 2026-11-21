@@ -2,14 +2,17 @@
 
 Inference-only fork of [shon-otmazgin/fastcoref](https://github.com/shon-otmazgin/fastcoref) v2.1.6, using the current Transformers 5 runtime. The package contains the model and inference utilities used by Tapestry; obsolete research training entrypoints and generated package metadata are not maintained as parallel source representations.
 
+The fork deploys with Tapestry as one unversioned implementation. Dependency constraints remain in `requirements.txt` and `setup.py`.
+
 ## Changes from upstream
 
 - Added `CorefResult.get_resolved_text()` to produce text with pronouns replaced by their canonical antecedents
+- `FCoref` and `LingMessCoref` download a pinned Hugging Face Hub commit of their default model (`revision`); a local weights path loads as is
 
 ## Usage
 
 ```python
-from fastcoref import FCoref
+from fastcoref.fastcoref.modeling import FCoref
 from spacy import load
 
 nlp = load("en_core_web_sm", exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"])
@@ -26,7 +29,7 @@ preds.get_resolved_text()
 For the more accurate LingMess model:
 
 ```python
-from fastcoref import LingMessCoref
+from fastcoref.fastcoref.modeling import LingMessCoref
 from spacy import load
 
 nlp = load("en_core_web_sm", exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"])
