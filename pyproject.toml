@@ -32,7 +32,8 @@ addopts = "-p no:jaxtyping"
 
 [tool.pyright]
 include = ["fastcoref", "setup.py", "tests"]
-extraPaths = [".."]
+# Resolve fastcoref.fastcoref from the parent checkout, as Tapestry does.
+executionEnvironments = [{ root = ".." }]
 pythonVersion = "3.12"
 typeCheckingMode = "basic"
 reportImportCycles = "error"

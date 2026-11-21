@@ -367,17 +367,15 @@ class CorefModel:
                 "or initialize the model with an nlp component."
             )
 
-        if is_split_into_words:
-            is_batched = isinstance(texts, (list, tuple)) and (len(texts) == 0 or isinstance(texts[0], (list, tuple)))
-        else:
-            is_batched = isinstance(texts, (list, tuple))
-
-        if is_batched and len(texts) == 0:
-            if output_file != "":
-                with open(output_file, "w", encoding="utf-8") as f:
-                    f.write("")
-            computed_return_value = []
-            return computed_return_value
+        is_batched = False
+        if isinstance(texts, (list, tuple)):
+            if len(texts) == 0:
+                if output_file != "":
+                    with open(output_file, "w", encoding="utf-8") as f:
+                        f.write("")
+                computed_return_value = []
+                return computed_return_value
+            is_batched = not is_split_into_words or isinstance(texts[0], (list, tuple))
 
         if not is_batched:
             texts = [texts]
