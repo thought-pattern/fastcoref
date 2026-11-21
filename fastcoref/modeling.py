@@ -14,15 +14,15 @@ from torch import cuda as torch_cuda, device as torch_device, no_grad as torch_n
 from tqdm.auto import tqdm
 from transformers import AutoConfig, AutoTokenizer, logging as transformers_logging
 
-from fastcoref.fastcoref.coref_models.modeling_fcoref import FCorefModel
-from fastcoref.fastcoref.coref_models.modeling_lingmess import LingMessModel
-from fastcoref.fastcoref.utilities.collate import (
+from .coref_models.modeling_fcoref import FCorefModel
+from .coref_models.modeling_lingmess import LingMessModel
+from .utilities.collate import (
     DynamicBatchSampler,
     LeftOversCollator,
     PadCollator,
 )
-from fastcoref.fastcoref.utilities.consts import FCOREF_REVISION, LINGMESS_REVISION
-from fastcoref.fastcoref.utilities.util import (
+from .utilities.consts import FCOREF_REVISION, LINGMESS_REVISION
+from .utilities.util import (
     align_to_char_level,
     create_clusters,
     create_mention_to_antecedent,

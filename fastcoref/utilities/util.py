@@ -11,12 +11,12 @@ from torch import (
     manual_seed as torch_manual_seed,
 )
 
-from fastcoref.fastcoref.utilities.consts import (
+from .consts import (
     CATEGORIES,
     NULL_ID_FOR_COREF,
     PRONOUNS_GROUPS,
 )
-from fastcoref.fastcoref.utilities.metrics import CorefEvaluator, MentionEvaluator
+from .metrics import CorefEvaluator, MentionEvaluator
 
 logger = logging_getLogger(__name__)
 

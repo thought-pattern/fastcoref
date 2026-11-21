@@ -87,7 +87,8 @@ jobs:
       - name: Run Pyright
         run: python -m pyright
 
-      - name: Verify runtime package imports
-        run: |
-          ln -sfn "$PWD" "$RUNNER_TEMP/fastcoref"
-          PYTHONPATH="$RUNNER_TEMP" python -P -c "from fastcoref.fastcoref.modeling import CorefResult, FCoref, LingMessCoref"
+      - name: Verify installed package imports
+        run: python -P -c "from fastcoref.modeling import CorefResult, FCoref, LingMessCoref"
+
+      - name: Run tests
+        run: python -m pytest

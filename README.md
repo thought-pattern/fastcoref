@@ -12,7 +12,7 @@ The fork deploys with Tapestry as one unversioned implementation. Dependency con
 ## Usage
 
 ```python
-from fastcoref.fastcoref.modeling import FCoref
+from fastcoref.modeling import FCoref
 from spacy import load
 
 nlp = load("en_core_web_sm", exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"])
@@ -29,7 +29,7 @@ preds.get_resolved_text()
 For the more accurate LingMess model:
 
 ```python
-from fastcoref.fastcoref.modeling import LingMessCoref
+from fastcoref.modeling import LingMessCoref
 from spacy import load
 
 nlp = load("en_core_web_sm", exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"])

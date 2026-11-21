@@ -1,25 +1,22 @@
 """Tests for test fcoref."""
 
-from pathlib import Path
 from unittest import TestCase as unittest_TestCase
 
 from spacy import load as spacy_load
 
-from fastcoref.fastcoref.modeling import CorefResult, FCoref
+from fastcoref.modeling import CorefResult, FCoref
 
 
 class TestFCoref(unittest_TestCase):
-    """FCoref predictions over the staged local weights."""
+    """FCoref predictions from the pinned default model."""
 
     @classmethod
     def setUpClass(cls):
-        model_path = Path(__file__).parents[2] / "weights" / "biu-nlp" / "f-coref"
         nlp = spacy_load(
             "en_core_web_sm",
             exclude=["tagger", "parser", "lemmatizer", "ner", "textcat"],
         )
         cls.model = FCoref(
-            model_name_or_path=str(model_path),
             device="cpu",
             nlp=nlp,
             enable_progress_bar=False,

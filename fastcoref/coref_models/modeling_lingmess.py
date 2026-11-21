@@ -26,8 +26,8 @@ from torch.nn import Dropout, LayerNorm, Linear, Module, init
 from transformers import AutoModel, BertPreTrainedModel
 from transformers.activations import ACT2FN
 
-from fastcoref.fastcoref.utilities.consts import CATEGORIES, STOPWORDS
-from fastcoref.fastcoref.utilities.util import (
+from ..utilities.consts import CATEGORIES, STOPWORDS
+from ..utilities.util import (
     extract_clusters,
     extract_mentions_to_clusters,
     get_category_id,
