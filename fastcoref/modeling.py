@@ -21,7 +21,7 @@ from .utilities.collate import (
     LeftOversCollator,
     PadCollator,
 )
-from .utilities.consts import FCOREF_REVISION, LINGMESS_REVISION
+from .utilities.consts import FCOREF_REVISION, LINGMESS_REVISION, PRONOUNS_GROUPS
 from .utilities.util import (
     align_to_char_level,
     create_clusters,
@@ -39,13 +39,31 @@ logging_basicConfig(
     level=logging_INFO,
 )
 
+PRONOUN_SURFACES = set(PRONOUNS_GROUPS) | {
+    "theirs",
+    "these",
+    "those",
+    "who",
+    "whom",
+    "whose",
+    "which",
+    "oneself",
+}
+
+
+def is_pronoun_mention(mention: str) -> bool:
+    """Return True when `mention` is a standalone pronoun rather than a named or nominal entity."""
+    cleaned = str(mention or "").strip().strip(".,;:!?()[]{}\"'").lower()
+    result = bool(cleaned) and cleaned in PRONOUN_SURFACES
+    return result
+
 
 def aligned_char_clusters(clusters, char_map) -> list:
-    """Return each cluster's source character spans in mention order.
+    """Return each cluster's distinct source character spans in mention order.
 
     align_to_char_level gives a mention on a tokenizer special or padding position a False
-    span. That mention has no source coordinates, so it is omitted, and a cluster left with
-    fewer than two aligned mentions no longer states a coreference.
+    span. Subword spans within the same word align to the same character range and are
+    deduplicated, so a cluster left with fewer than two distinct aligned mentions is omitted.
     """
     char_clusters = []
     omitted = 0
@@ -53,8 +71,9 @@ def aligned_char_clusters(clusters, char_map) -> list:
         spans = [char_map.get(mention, (False, False))[1] for mention in cluster]
         aligned = [span for span in spans if isinstance(span, tuple)]
         omitted += len(spans) - len(aligned)
-        if len(aligned) >= 2:
-            char_clusters.append(aligned)
+        deduped = list(dict.fromkeys(aligned))
+        if len(deduped) >= 2:
+            char_clusters.append(deduped)
     if omitted:
         logger.info(f"Omitted {omitted} coreference mention(s) without a source text alignment")
     return char_clusters
@@ -73,19 +92,27 @@ class CorefResult:
         # Both cluster views and the resolved text read this one aligned form, so they stay in step.
         self.char_clusters = aligned_char_clusters(clusters, char_map)
 
+    def mention_text(self, start, end) -> str:
+        """Render the mention text for `(start, end)` on either string or pretokenized input."""
+        if isinstance(self.text, str):
+            sliced = self.text[start:end]
+            return sliced
+        joined = " ".join(str(token) for token in self.text[start:end])
+        return joined
+
     def get_clusters(self, as_strings=True):
         if not as_strings:
             computed_return_value = [list(cluster) for cluster in self.char_clusters]
             return computed_return_value
 
-        computed_return_value = [[self.text[start:end] for start, end in cluster] for cluster in self.char_clusters]
+        computed_return_value = [[self.mention_text(start, end) for start, end in cluster] for cluster in self.char_clusters]
         return computed_return_value
 
     def get_logit(self, span_i, span_j):
         if span_i not in self.reverse_char_map:
-            raise ValueError(f'span_i="{self.text[span_i[0] : span_i[1]]}" is not an entity in this model!')
+            raise ValueError(f'span_i="{self.mention_text(span_i[0], span_i[1])}" is not an entity in this model!')
         if span_j not in self.reverse_char_map:
-            raise ValueError(f'span_i="{self.text[span_j[0] : span_j[1]]}" is not an entity in this model!')
+            raise ValueError(f'span_j="{self.mention_text(span_j[0], span_j[1])}" is not an entity in this model!')
 
         span_i_idx = self.reverse_char_map[span_i][0]  # 0 is to get the span index
         span_j_idx = self.reverse_char_map[span_j][0]
@@ -98,22 +125,25 @@ class CorefResult:
         return computed_return_value
 
     def get_resolved_text(self):
-        """Replace coreferent mentions with their canonical antecedent (longest mention in each cluster)."""
+        """Replace coreferent mentions with their canonical non-pronoun antecedent."""
         char_clusters = self.get_clusters(as_strings=False)
         str_clusters = self.get_clusters(as_strings=True)
 
         if not char_clusters:
-            return self.text
+            if isinstance(self.text, str):
+                return self.text
+            joined_default = " ".join(str(token) for token in self.text)
+            return joined_default
 
-        # Build replacement list: for each cluster, the longest mention is the antecedent
+        # Build replacement list: prefer non-pronoun mentions, then longest text, then earliest position.
         replacements = []
         order = 0
         for char_cluster, str_cluster in zip(char_clusters, str_clusters, strict=False):
             if len(char_cluster) < 2:
                 continue
-            # Pick longest mention as canonical
-            mention_lengths = [len(mention) for mention in str_cluster]
-            canonical_idx = mention_lengths.index(max(mention_lengths))
+            canonical_idx = max(
+                (0 if is_pronoun_mention(mention) else 1, len(mention), -idx, idx) for idx, mention in enumerate(str_cluster)
+            )[3]
             canonical = str_cluster[canonical_idx]
             for i, (start, end) in enumerate(char_cluster):
                 if i != canonical_idx and start < end:
@@ -121,27 +151,38 @@ class CorefResult:
                     order += 1
 
         if not replacements:
-            return self.text
+            if isinstance(self.text, str):
+                return self.text
+            joined_unmodified = " ".join(str(token) for token in self.text)
+            return joined_unmodified
 
         # Keep outer longest non-overlapping spans first, then apply in descending start order.
         ordered = sorted(replacements, key=lambda item: (-(item[1] - item[0]), item[0], item[3]))
         selected = []
-        for start, end, canonical, _ in ordered:
-            if any(start < kept_end and kept_start < end for kept_start, kept_end, _ in selected):
+        for start, end, canonical, unused_order in ordered:
+            del unused_order
+            if any(start < kept_end and kept_start < end for kept_start, kept_end, unused_canonical in selected):
                 continue
             selected.append((start, end, canonical))
 
         selected.sort(key=lambda item: item[0], reverse=True)
-        resolved = self.text
+        if isinstance(self.text, str):
+            resolved = self.text
+            for start, end, replacement in selected:
+                resolved = resolved[:start] + replacement + resolved[end:]
+            return resolved
+        resolved_tokens = [str(token) for token in self.text]
         for start, end, replacement in selected:
-            resolved = resolved[:start] + replacement + resolved[end:]
-        return resolved
+            resolved_tokens[start:end] = [replacement]
+        joined_resolved = " ".join(resolved_tokens)
+        return joined_resolved
 
     def __str__(self):
-        if len(self.text) > 50:
-            text_to_print = f"{self.text[:50]}..."
+        display_text = self.text if isinstance(self.text, str) else " ".join(str(token) for token in self.text)
+        if len(display_text) > 50:
+            text_to_print = f"{display_text[:50]}..."
         else:
-            text_to_print = self.text
+            text_to_print = display_text
         computed_return_value = f'CorefResult(text="{text_to_print}", clusters={self.get_clusters()})'
         return computed_return_value
 
