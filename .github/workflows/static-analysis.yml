@@ -79,7 +79,7 @@ jobs:
         run: python -m pip check
 
       - name: Install type-checking and test dependencies
-        run: python -m pip install pyright==1.1.411 pytest
+        run: python -m pip install pyright pytest
 
       - name: Verify combined dependency compatibility
         run: python -m pip check
