@@ -1,23 +1,27 @@
 """Utilities for modeling."""
 
 from json import dumps as json_dumps
-from logging import INFO as logging_INFO
-from logging import basicConfig as logging_basicConfig
-from logging import getLogger as logging_getLogger
+from logging import (
+    INFO as logging_INFO,
+    basicConfig as logging_basicConfig,
+    getLogger as logging_getLogger,
+)
 
 from datasets import Dataset
-from numpy import nonzero as np_nonzero
+from numpy import empty as np_empty, float32 as np_float32, nonzero as np_nonzero
 from spacy.language import Language
-from torch import cuda as torch_cuda
-from torch import device as torch_device
-from torch import no_grad as torch_no_grad
+from torch import cuda as torch_cuda, device as torch_device, no_grad as torch_no_grad
 from tqdm.auto import tqdm
-from transformers import AutoConfig, AutoTokenizer
-from transformers import logging as transformers_logging
+from transformers import AutoConfig, AutoTokenizer, logging as transformers_logging
 
 from .coref_models.modeling_fcoref import FCorefModel
 from .coref_models.modeling_lingmess import LingMessModel
-from .utilities.collate import DynamicBatchSampler, LeftOversCollator, PadCollator
+from .utilities.collate import (
+    DynamicBatchSampler,
+    LeftOversCollator,
+    PadCollator,
+)
+from .utilities.consts import FCOREF_REVISION, LINGMESS_REVISION
 from .utilities.util import (
     align_to_char_level,
     create_clusters,
@@ -36,7 +40,29 @@ logging_basicConfig(
 )
 
 
+def aligned_char_clusters(clusters, char_map) -> list:
+    """Return each cluster's source character spans in mention order.
+
+    align_to_char_level gives a mention on a tokenizer special or padding position a False
+    span. That mention has no source coordinates, so it is omitted, and a cluster left with
+    fewer than two aligned mentions no longer states a coreference.
+    """
+    char_clusters = []
+    omitted = 0
+    for cluster in clusters:
+        spans = [char_map.get(mention, (False, False))[1] for mention in cluster]
+        aligned = [span for span in spans if isinstance(span, tuple)]
+        omitted += len(spans) - len(aligned)
+        if len(aligned) >= 2:
+            char_clusters.append(aligned)
+    if omitted:
+        logger.info(f"Omitted {omitted} coreference mention(s) without a source text alignment")
+    return char_clusters
+
+
 class CorefResult:
+    """One text's predicted coreference clusters with their character spans and antecedent logits."""
+
     def __init__(self, text, clusters, char_map, reverse_char_map, coref_logit, text_idx):
         self.text = text
         self.clusters = clusters
@@ -44,20 +70,15 @@ class CorefResult:
         self.reverse_char_map = reverse_char_map
         self.coref_logit = coref_logit
         self.text_idx = text_idx
+        # Both cluster views and the resolved text read this one aligned form, so they stay in step.
+        self.char_clusters = aligned_char_clusters(clusters, char_map)
 
     def get_clusters(self, as_strings=True):
         if not as_strings:
-            computed_return_value = [[self.char_map[mention][1] for mention in cluster] for cluster in self.clusters]
+            computed_return_value = [list(cluster) for cluster in self.char_clusters]
             return computed_return_value
 
-        computed_return_value = [
-            [
-                self.text[self.char_map[mention][1][0] : self.char_map[mention][1][1]]
-                for mention in cluster
-                if None not in self.char_map[mention]
-            ]
-            for cluster in self.clusters
-        ]
+        computed_return_value = [[self.text[start:end] for start, end in cluster] for cluster in self.char_clusters]
         return computed_return_value
 
     def get_logit(self, span_i, span_j):
@@ -86,23 +107,33 @@ class CorefResult:
 
         # Build replacement list: for each cluster, the longest mention is the antecedent
         replacements = []
+        order = 0
         for char_cluster, str_cluster in zip(char_clusters, str_clusters, strict=False):
             if len(char_cluster) < 2:
                 continue
             # Pick longest mention as canonical
-            canonical_idx = max(range(len(str_cluster)), key=lambda i: len(str_cluster[i]))
+            mention_lengths = [len(mention) for mention in str_cluster]
+            canonical_idx = mention_lengths.index(max(mention_lengths))
             canonical = str_cluster[canonical_idx]
             for i, (start, end) in enumerate(char_cluster):
-                if i != canonical_idx:
-                    replacements.append((start, end, canonical))
+                if i != canonical_idx and start < end:
+                    replacements.append((start, end, canonical, order))
+                    order += 1
 
         if not replacements:
             return self.text
 
-        # Sort by position descending so replacements don't shift indices
-        replacements.sort(key=lambda r: r[0], reverse=True)
+        # Keep outer longest non-overlapping spans first, then apply in descending start order.
+        ordered = sorted(replacements, key=lambda item: (-(item[1] - item[0]), item[0], item[3]))
+        selected = []
+        for start, end, canonical, _ in ordered:
+            if any(start < kept_end and kept_start < end for kept_start, kept_end, _ in selected):
+                continue
+            selected.append((start, end, canonical))
+
+        selected.sort(key=lambda item: item[0], reverse=True)
         resolved = self.text
-        for start, end, replacement in replacements:
+        for start, end, replacement in selected:
             resolved = resolved[:start] + replacement + resolved[end:]
         return resolved
 
@@ -120,6 +151,11 @@ class CorefResult:
 
 
 class CorefModel:
+    """Coreference inference over a pretrained model, its tokenizer, a collator and a spaCy pipeline.
+
+    A Hugging Face Hub model name downloads the pinned revision; a local weights path loads as is.
+    """
+
     def __init__(
         self,
         model_name_or_path,
@@ -128,19 +164,23 @@ class CorefModel:
         enable_progress_bar,
         device: str,
         nlp: Language,
+        revision: str,
     ):
         self.model_name_or_path = model_name_or_path
+        self.revision = revision
         selected_device = device or ("cuda" if torch_cuda.is_available() else "cpu")
         self.device = torch_device(selected_device)
         self.n_gpu = torch_cuda.device_count()
         self.seed = 42
         self.enable_progress_bar = enable_progress_bar
 
-        config = AutoConfig.from_pretrained(self.model_name_or_path)
+        config = AutoConfig.from_pretrained(self.model_name_or_path, revision=self.revision)
         self.max_segment_len = config.coref_head.get("max_segment_len", False)
         self.max_doc_len = config.coref_head.get("max_doc_len", False) if "max_doc_len" in config.coref_head else False
 
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path, use_fast=True, add_prefix_space=True, verbose=False)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.model_name_or_path, revision=self.revision, use_fast=True, add_prefix_space=True, verbose=False
+        )
 
         if collator_class == PadCollator:
             self.collator = PadCollator(tokenizer=self.tokenizer, device=self.device)
@@ -161,6 +201,7 @@ class CorefModel:
         self.model = coref_class.from_pretrained(
             self.model_name_or_path,
             config=config,
+            revision=self.revision,
         )
         self.model.to(self.device)
 
@@ -209,15 +250,15 @@ class CorefModel:
 
     def batch_inference(self, batch):
         texts = batch.get("text", [])
-        subtoken_map = batch.get("subtoken_map", False)
-        token_to_char = batch.get("offset_mapping", {})
+        subtoken_map = batch.get("subtoken_map", [])
+        token_to_char = batch.get("offset_mapping", [])
         idxs = batch.get("idx", [])
         with torch_no_grad():
             outputs = self.model(batch, return_all_outputs=True)
 
         outputs_np = tuple(tensor.cpu().numpy() for tensor in outputs)
 
-        span_starts, span_ends, mention_logits, coref_logits = outputs_np
+        span_starts, span_ends, _, coref_logits = outputs_np
         doc_indices, mention_to_antecedent = create_mention_to_antecedent(span_starts, span_ends, coref_logits)
 
         results = []
@@ -251,9 +292,28 @@ class CorefModel:
                 for batch in dataloader:
                     results.extend(self.batch_inference(batch))
                     progress_bar.update(n=len(batch.get("text", "")))
+                skipped_count = len(getattr(dataloader, "skipped", []))
+                if skipped_count:
+                    progress_bar.update(n=skipped_count)
         else:
             for batch in dataloader:
                 results.extend(self.batch_inference(batch))
+
+        seen_indices = {res.text_idx for res in results}
+        for example in getattr(dataloader, "skipped", []):
+            idx = example.get("idx", 0)
+            if idx not in seen_indices:
+                seen_indices.add(idx)
+                results.append(
+                    CorefResult(
+                        text=example.get("text", ""),
+                        clusters=[],
+                        char_map={},
+                        reverse_char_map={},
+                        coref_logit=np_empty((0, 0), dtype=np_float32),
+                        text_idx=idx,
+                    )
+                )
 
         computed_return_value = sorted(results, key=lambda res: res.text_idx)
         return computed_return_value
@@ -288,7 +348,7 @@ class CorefModel:
                     return True
                 elif all([isinstance(t, (list, tuple)) for t in texts]):
                     # ... list with an empty list or with a list of strings
-                    computed_return_value = len(texts[0]) == 0 or isinstance(texts[0][0], str)
+                    computed_return_value = all(all(isinstance(word, str) for word in t) for t in texts)
                     return computed_return_value
                 else:
                     return False
@@ -307,10 +367,15 @@ class CorefModel:
                 "or initialize the model with an nlp component."
             )
 
-        if is_split_into_words:
-            is_batched = isinstance(texts, (list, tuple)) and texts and isinstance(texts[0], (list, tuple))
-        else:
-            is_batched = isinstance(texts, (list, tuple))
+        is_batched = False
+        if isinstance(texts, (list, tuple)):
+            if len(texts) == 0:
+                if output_file != "":
+                    with open(output_file, "w", encoding="utf-8") as f:
+                        f.write("")
+                computed_return_value = []
+                return computed_return_value
+            is_batched = not is_split_into_words or isinstance(texts[0], (list, tuple))
 
         if not is_batched:
             texts = [texts]
@@ -320,7 +385,7 @@ class CorefModel:
 
         preds = self.inference(dataloader)
         if output_file != "":
-            with open(output_file, "w") as f:
+            with open(output_file, "w", encoding="utf-8") as f:
                 data = [
                     {
                         "text": p.text,
@@ -337,6 +402,8 @@ class CorefModel:
 
 
 class FCoref(CorefModel):
+    """The F-coref model with the leftovers collator."""
+
     def __init__(
         self,
         model_name_or_path="biu-nlp/f-coref",
@@ -344,6 +411,7 @@ class FCoref(CorefModel):
         *,
         nlp: Language,
         enable_progress_bar=True,
+        revision: str = FCOREF_REVISION,
     ):
         super().__init__(
             model_name_or_path,
@@ -352,10 +420,13 @@ class FCoref(CorefModel):
             enable_progress_bar,
             device,
             nlp,
+            revision,
         )
 
 
 class LingMessCoref(CorefModel):
+    """The LingMess model with the padding collator."""
+
     def __init__(
         self,
         model_name_or_path="biu-nlp/lingmess-coref",
@@ -363,6 +434,7 @@ class LingMessCoref(CorefModel):
         *,
         nlp: Language,
         enable_progress_bar=True,
+        revision: str = LINGMESS_REVISION,
     ):
         super().__init__(
             model_name_or_path,
@@ -371,4 +443,5 @@ class LingMessCoref(CorefModel):
             enable_progress_bar,
             device,
             nlp,
+            revision,
         )
