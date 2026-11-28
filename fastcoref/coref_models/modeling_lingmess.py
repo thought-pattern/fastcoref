@@ -6,6 +6,7 @@ from numpy import zeros as np_zeros
 from torch import (
     arange as torch_arange,
     cat as torch_cat,
+    cumsum as torch_cumsum,
     div as torch_div,
     einsum as torch_einsum,
     empty as torch_empty,
@@ -13,6 +14,7 @@ from torch import (
     logsumexp as torch_logsumexp,
     matmul as torch_matmul,
     max as torch_max,
+    minimum as torch_minimum,
     nn,
     ones_like as torch_ones_like,
     sort as torch_sort,
@@ -76,8 +78,8 @@ class LingMessModel(BertPreTrainedModel):
 
         # this is how huggingface loading the class model and setting the name of the variable.
         base_model = AutoModel.from_config(config)
-        LingMessModel.base_model_prefix = base_model.base_model_prefix
-        LingMessModel.config_class = base_model.config_class
+        self.base_model_prefix = base_model.base_model_prefix
+        self.config_class = base_model.config_class
         setattr(self, self.base_model_prefix, base_model)
 
         self.start_mention_mlp = FullyConnectedLayer(config, self.hidden_size, self.ffnn_size, self.dropout_prob)
@@ -121,7 +123,7 @@ class LingMessModel(BertPreTrainedModel):
 
         for w, b in zip(W, B, strict=False):
             init.kaiming_uniform_(w, a=math_sqrt(5))
-            fan_in, _ = init._calculate_fan_in_and_fan_out(w)
+            fan_in = w.size(1) * w[0][0].numel()
             bound = 1 / math_sqrt(fan_in) if fan_in > 0 else 0
             init.uniform_(b, -bound, bound)
         return False
@@ -156,13 +158,18 @@ class LingMessModel(BertPreTrainedModel):
         :param top_lambda:
         :return:
         """
-        batch_size, seq_length, _ = mention_logits.size()
+        batch_size, seq_length, unused_seq_length = mention_logits.size()
+        del unused_seq_length
         actual_seq_lengths = torch_sum(attention_mask, dim=-1)  # [batch_size]
+        valid_mention_mask = self.get_mention_mask(mention_logits, attention_mask)
+        mention_logits = mask_tensor(mention_logits, valid_mention_mask)
+        valid_span_counts = torch_sum(valid_mention_mask.view(batch_size, -1) > 0, dim=-1).int()
 
-        k = (actual_seq_lengths * self.top_lambda).int()  # [batch_size]
+        k = torch_minimum((actual_seq_lengths * self.top_lambda).int(), valid_span_counts)  # [batch_size]
         max_k = int(torch_max(k))  # This is the k for the largest input in the batch, we will need to pad
 
-        _, topk_1d_indices = torch_topk(mention_logits.view(batch_size, -1), dim=-1, k=max_k)  # [batch_size, max_k]
+        unused_values, topk_1d_indices = torch_topk(mention_logits.view(batch_size, -1), dim=-1, k=max_k)  # [batch_size, max_k]
+        del unused_values
 
         span_mask = self.get_span_mask(batch_size, k, max_k)  # [batch_size, max_k]
         # drop the invalid indices and set them to the last index
@@ -279,18 +286,23 @@ class LingMessModel(BertPreTrainedModel):
         loss = loss_per_cat.sum()
         return loss
 
-    def get_mention_mask(self, mention_logits_or_weights):
+    def get_mention_mask(self, mention_logits_or_weights, attention_mask=False):
         """
         Returns a tensor of size [batch_size, seq_length, seq_length] where valid spans
-        (start <= end < start + max_span_length) are 1 and the rest are 0
+        (start <= end < start + max_span_length) on non-padding tokens are 1 and the rest are 0.
         :param mention_logits_or_weights: Either the span mention logits or weights, size [batch_size, seq_length, seq_length]
         """
         mention_mask = torch_ones_like(mention_logits_or_weights, dtype=self.dtype)
         mention_mask = mention_mask.triu(diagonal=0)
         mention_mask = mention_mask.tril(diagonal=self.max_span_length - 1)
+        if attention_mask is not False:
+            token_valid = (attention_mask > 0).to(dtype=mention_mask.dtype)
+            invalid_cumsum = torch_cumsum((attention_mask <= 0).int(), dim=-1)
+            contiguous_valid = (invalid_cumsum.unsqueeze(-1) == invalid_cumsum.unsqueeze(-2)).to(dtype=mention_mask.dtype)
+            mention_mask = mention_mask * token_valid.unsqueeze(-1) * token_valid.unsqueeze(-2) * contiguous_valid
         return mention_mask
 
-    def calc_mention_logits(self, start_mention_reps, end_mention_reps):
+    def calc_mention_logits(self, start_mention_reps, end_mention_reps, attention_mask=False):
         start_mention_logits = self.mention_start_classifier(start_mention_reps).squeeze(-1)  # [batch_size, seq_length]
         end_mention_logits = self.mention_end_classifier(end_mention_reps).squeeze(-1)  # [batch_size, seq_length]
 
@@ -298,7 +310,7 @@ class LingMessModel(BertPreTrainedModel):
         joint_mention_logits = torch_matmul(temp, end_mention_reps.permute([0, 2, 1]))  # [batch_size, seq_length, seq_length]
 
         mention_logits = joint_mention_logits + start_mention_logits.unsqueeze(-1) + end_mention_logits.unsqueeze(-2)
-        mention_mask = self.get_mention_mask(mention_logits)  # [batch_size, seq_length, seq_length]
+        mention_mask = self.get_mention_mask(mention_logits, attention_mask)  # [batch_size, seq_length, seq_length]
         mention_logits = mask_tensor(mention_logits, mention_mask)  # [batch_size, seq_length, seq_length]
         return mention_logits
 
@@ -370,9 +382,10 @@ class LingMessModel(BertPreTrainedModel):
     def forward_transformer(self, batch):
         input_ids = batch.get("input_ids", [])
         attention_mask = batch.get("attention_mask", False)
+        encoder = getattr(self, self.base_model_prefix)
 
         if "leftovers" not in batch:
-            outputs = self.base_model(input_ids, attention_mask=attention_mask)
+            outputs = encoder(input_ids, attention_mask=attention_mask)
             sequence_output = outputs.last_hidden_state
         else:
             docs, segments, segment_len = input_ids.size()
@@ -381,7 +394,7 @@ class LingMessModel(BertPreTrainedModel):
                 attention_mask.view(-1, segment_len),
             )
 
-            outputs = self.base_model(input_ids, attention_mask=attention_mask)
+            outputs = encoder(input_ids, attention_mask=attention_mask)
             sequence_output = outputs.last_hidden_state
 
             attention_mask = attention_mask.view((docs, segments * segment_len))  # [docs, seq_len]
@@ -392,7 +405,7 @@ class LingMessModel(BertPreTrainedModel):
                 batch.get("leftovers", {}).get("attention_mask", False),
             )
             if len(leftovers_ids) > 0:
-                res_outputs = self.base_model(leftovers_ids, attention_mask=leftovers_mask)
+                res_outputs = encoder(leftovers_ids, attention_mask=leftovers_mask)
                 res_sequence_output = res_outputs.last_hidden_state
 
                 attention_mask = torch_cat([attention_mask, leftovers_mask], dim=1)
@@ -416,7 +429,7 @@ class LingMessModel(BertPreTrainedModel):
         end_mention_reps = self.end_mention_mlp(sequence_output)
 
         # mention scores
-        mention_logits = self.calc_mention_logits(start_mention_reps, end_mention_reps)
+        mention_logits = self.calc_mention_logits(start_mention_reps, end_mention_reps, attention_mask)
 
         # prune mentions
         (
